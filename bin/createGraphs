@@ -64,14 +64,15 @@ fi
 base=`dirname "$1"`
 files=`grep "#include[ 	][ 	]*\"" <"$1" | sed "s%^[ 	]*#include[ 	]*\"\([^\"]*\)\".*$%$base/\1%"`
 options=`grep -h "^[ 	]*option[ 	]*(" $files | sed "s%^[ 	]*option[ 	]*([ 	]*\([A-Za-z_][A-Za-z0-9_]*\).*$%\1%" | tr '\n' '|' | sed "s%|$%%"`
-lines=`grep -h -E "^[ 	]*option[ 	]*\([ 	]*[A-Za-z_][A-Za-z0-9_]*|(^|^.*[^A-Za-z0-9_])((($options|state|initial_state|target_state|aborted_state)[ 	]*\()|goto[ 	][ 	]*[A-Za-z_][A-Za-z0-9_]*)" $files \
+lines=`cat $files \
 | sed "s%//.*%%" \
 | tr '\t' ' ' \
 | tr -d '\r' \
 | tr '\n' '\t' \
-| sed -e "s%/\*[^*]*\*/%%g" \
+| sed -e "s%/\*\([^*]*\*[^/]\)*[^*]*\*\**/%%g" \
   -e "s%[ 	]*	%	%g" \
 | tr '\t' '\n' \
+| grep -E "^[ 	]*option[ 	]*\([ 	]*[A-Za-z_][A-Za-z0-9_]*|(^|^.*[^A-Za-z0-9_])((($options|state|initial_state|target_state|aborted_state)[ 	]*\()|goto[ 	][ 	]*[A-Za-z_][A-Za-z0-9_]*)" \
 | sed -E -e "s%^[ 	]*option[ 	]*\([ 	]*([A-Za-z_][A-Za-z0-9_]*).*%option \1%" \
   -e "s%(^|^.*[^A-Za-z0-9_])($options)[ 	]*\(.*%call \2%" \
   -e "s%(^|^.*[^A-Za-z0-9_])(state|initial_state|target_state|aborted_state)[ 	]*\(([A-Za-z_][A-Za-z0-9_]*).*%\2 \3%" \
