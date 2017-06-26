@@ -234,11 +234,27 @@ public:
   public:
     enum Option : unsigned char {none}; /**< A dummy enum for all options. */
 
+    /** The constructor prepares the collection of information if this has not been done yet. */
+    OptionInfos()
+    {
+      if(!optionsByIndex)
+        init();
+    }
+
+    /** The destructor frees the global object. */
+    ~OptionInfos()
+    {
+      delete optionsByIndex;
+      delete optionsByName;
+      optionsByIndex = nullptr;
+      optionsByName = nullptr;
+    }
+
     /**
-     * The constructor prepares the collection of information about all options in optionByIndex
+     * The method prepares the collection of information about all options in optionByIndex
      * and optionsByName. It also adds a dummy option descriptor at index 0 with the name "none".
      */
-    OptionInfos()
+    static void init()
     {
       assert(!optionsByIndex);
       assert(!optionsByName);
@@ -251,17 +267,6 @@ public:
     }
 
     /**
-     * The destructor frees the global object.
-     */
-    ~OptionInfos()
-    {
-      delete optionsByIndex;
-      delete optionsByName;
-      optionsByIndex = nullptr;
-      optionsByName = nullptr;
-    }
-
-    /**
      * The method adds information about an option to the collections.
      * It will be call from the constuctors of static objects created for each
      * option.
@@ -271,6 +276,9 @@ public:
      */
     static void add(OptionDescriptor*(*descriptor)())
     {
+      if(!optionsByName)
+        init();
+
       assert(optionsByIndex);
       assert(optionsByName);
       OptionDescriptor* o = descriptor();
