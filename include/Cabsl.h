@@ -276,7 +276,7 @@ public:
      */
     static void add(OptionDescriptor*(*descriptor)())
     {
-      if(!optionsByName)
+      if(!optionsByIndex)
         init();
 
       assert(optionsByIndex);
