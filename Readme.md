@@ -302,33 +302,6 @@ change the following line in *Cabsl.h*:
     static const size_t maxNumOfOptions = 500;
 
 
-### Handling Data that Cannot Be Copied
-
-The collection of data is performed by assigning a pseudo instance of the
-behavior to itself, which executes the assignment operators of all
-members. The pseudo instance is just a block of zeroed memory that is
-treated as an object. If this breaks the code or does not compile,
-because some members or base classes do not permit copying, problems can
-be circumvented by moving everything that cannot be copied to a separate
-class, defining an empty assignment operator in that class, and derive
-the actual behavior from that class (and from `Cabsl`). This prevents
-copying anything defined inside the base class or its base classes, but
-still copies members of the actual behavior class, which CABSL needs.
-This can look like this:
-
-    class Helper : public NotCopyableBase
-    {
-    protected:
-      NotCopyableMember member;
-
-    public:
-      void operator=(const Helper&) {}
-    };
-
-    class MyBehavior : public Helper, public Cabsl<MyBehavior>
-    {
-
-
 ### Code Generation
 
 Technically, the C++ preprocessor translates each option to a member
