@@ -292,16 +292,6 @@ C++ preprocessor by code that does not make sense outside the behavior. To
 avoid conflicts with existing header files, always include *Cabsl.h* last.
 
 
-### Maximum Number of Options
-
-When the program is started, CABSL collects information about the options
-that are available. For this process, a maximum number of space is
-reserved that can be increased if necessary. To increase the number,
-change the following line in *Cabsl.h*:
-
-    static const size_t maxNumOfOptions = 500;
-
-
 ### Code Generation
 
 Technically, the C++ preprocessor translates each option to a member

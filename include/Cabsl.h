@@ -49,7 +49,7 @@
  * #define INTELLISENSE_PREFIX Class::
  * #endif
  *
- * @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
+ * @author Thomas Röfer
  */
 
 #pragma once
@@ -68,9 +68,6 @@
  */
 template<typename T> class Cabsl
 {
-private:
-  static const size_t maxNumOfOptions = 500; /**< The maximum number of options. Increase if necessary. */
-
 protected:
   using CabslBehavior = T; /**< This type allows to access the derived class by name. */
 
@@ -90,7 +87,7 @@ protected:
 
     int state; /**< The state currently selected. This is actually the line number in which the state was declared. */
     const char* stateName; /**< The name of the state (for activation graph). */
-    unsigned lastFrame = 1; /**< The time stamp of the last frame in which this option was executed. */
+    unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed. */
     unsigned optionStart; /**< The time when the option started to run (for option_time). */
     unsigned stateStart; /**< The time when the current state started to run (for state_time). */
     StateType stateType; /**< The type of the current state in this option. */
@@ -228,8 +225,8 @@ public:
   class OptionInfos
   {
   private:
-    static std::vector<OptionDescriptor*>* optionsByIndex; /**< All parameterless options in the sequence they were declared. */
-    static std::unordered_map<std::string, OptionDescriptor*>* optionsByName; /**< All parameterless options, indexed by their names. */
+    static std::vector<const OptionDescriptor*>* optionsByIndex; /**< All parameterless options in the sequence they were declared. */
+    static std::unordered_map<std::string, const OptionDescriptor*>* optionsByName; /**< All parameterless options, indexed by their names. */
 
   public:
     enum Option : unsigned char {none}; /**< A dummy enum for all options. */
@@ -258,37 +255,36 @@ public:
     {
       assert(!optionsByIndex);
       assert(!optionsByName);
-      optionsByIndex = new std::vector<OptionDescriptor*>;
-      optionsByIndex->reserve(maxNumOfOptions);
-      optionsByName = new std::unordered_map<std::string, OptionDescriptor*>;
-      static OptionDescriptor o("none", false, 0, 0);
-      optionsByIndex->push_back(&o);
-      (*optionsByName)[o.name] = optionsByIndex->back();
+      optionsByIndex = new std::vector<const OptionDescriptor*>;
+      optionsByName = new std::unordered_map<std::string, const OptionDescriptor*>;
+      static OptionDescriptor descriptor("none", false, 0, 0);
+      optionsByIndex->push_back(&descriptor);
+      (*optionsByName)[descriptor.name] = &descriptor;
     }
 
     /**
      * The method adds information about an option to the collections.
-     * It will be call from the constuctors of static objects created for each
+     * It will be called from the constructors of static objects created for each
      * option.
      * Note that options with parameters will be ignored, because they currently
      * cannot be called externally.
-     * @param descriptor A function that can return the description of an option.
+     * @param fnDescriptor A function that can return the description of an option.
      */
-    static void add(OptionDescriptor*(*descriptor)())
+    static void add(OptionDescriptor*(*fnDescriptor)())
     {
       if(!optionsByIndex)
         init();
 
       assert(optionsByIndex);
       assert(optionsByName);
-      OptionDescriptor* o = descriptor();
-      if(!o->hasParameters) // ignore options with parameters for now
+      OptionDescriptor& descriptor = *fnDescriptor();
+      if(!descriptor.hasParameters // ignore options with parameters for now
+         && optionsByName->find(descriptor.name) == optionsByName->end()) // only register once
       {
-        o->index = static_cast<int>(optionsByIndex->size());
-        optionsByIndex->push_back(o);
-        (*optionsByName)[o->name] = optionsByIndex->back();
+        descriptor.index = static_cast<int>(optionsByIndex->size());
+        optionsByIndex->push_back(&descriptor);
+        (*optionsByName)[descriptor.name] = &descriptor;
       }
-      assert(optionsByIndex->size() <= maxNumOfOptions);
     }
 
     /**
@@ -342,31 +338,31 @@ protected:
    * A template class for collecting information about an option.
    * @tparam descriptor A function that can return the description of the option.
    */
-  template<void*(*descriptor)()> class OptionInfo : public OptionContext
+  template<const void*(*descriptor)()> class OptionInfo : public OptionContext
   {
   private:
     /** A helper structure to register information about the option. */
-    struct Registrator
+    struct Registrar
     {
-      Registrator() {OptionInfos::add(reinterpret_cast<OptionDescriptor*(*)()>(descriptor));}
+      Registrar() {OptionInfos::add(reinterpret_cast<OptionDescriptor*(*)()>(descriptor));}
     };
-    static Registrator registrator; /**< The instance that registers the information about the option through construction. */
+    static Registrar registrar; /**< The instance that registers the information about the option through construction. */
 
   public:
     /** A dummy constructor that enforces linkage of the static member. */
-    OptionInfo() {static_cast<void>(&registrator);}
+    OptionInfo() {static_cast<void>(&registrar);}
   };
 
 private:
   static OptionInfos collectOptions; /**< This global instantiation collects data about all options. */
   typename OptionContext::StateType stateType; /**< The state type of the last option called. */
-  unsigned lastFrameTime; /**< The time stamp of the last time the behavior was executed. */
+  unsigned lastFrameTime; /**< The timestamp of the last time the behavior was executed. */
   unsigned char depth; /**< The depth level of the current option. Used for activation graph. */
   ActivationGraph* activationGraph; /**< The activation graph for debug output. Can be zero if not set. */
 
 protected:
   static thread_local Cabsl* _theInstance; /**< The instance of this behavior used. */
-  unsigned _currentFrameTime; /**< The time stamp of the last time the behavior was executed. */
+  unsigned _currentFrameTime; /**< The timestamp of the last time the behavior was executed. */
 
   /**
    * Constructor.
@@ -415,10 +411,10 @@ public:
 };
 
 template<typename CabslBehavior> thread_local Cabsl<CabslBehavior>* Cabsl<CabslBehavior>::_theInstance;
-template<typename CabslBehavior> std::vector<typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByIndex;
-template<typename CabslBehavior> std::unordered_map<std::string, typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByName;
+template<typename CabslBehavior> std::vector<const typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByIndex;
+template<typename CabslBehavior> std::unordered_map<std::string, const typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByName;
 template<typename CabslBehavior> typename Cabsl<CabslBehavior>::OptionInfos Cabsl<CabslBehavior>::collectOptions;
-template<typename CabslBehavior> template<void*(descriptor)()> typename Cabsl<CabslBehavior>::template OptionInfo<descriptor>::Registrator Cabsl<CabslBehavior>::OptionInfo<descriptor>::registrator;
+template<typename CabslBehavior> template<const void*(descriptor)()> typename Cabsl<CabslBehavior>::template OptionInfo<descriptor>::Registrar Cabsl<CabslBehavior>::OptionInfo<descriptor>::registrar;
 
 /**
  * The macro defines a state. It must be followed by a block of code that defines the state's body.
@@ -443,7 +439,7 @@ template<typename CabslBehavior> template<void*(descriptor)()> typename Cabsl<Ca
 /**
  * The macro defines an option. It must be followed by a block of code that defines the option's body
  * The option gets an additional parameter that manages its context. If the option has parameters,
- * two methods are generated. The first one adds the parameters to the execution enviornment and calls
+ * two methods are generated. The first one adds the parameters to the execution environment and calls
  * the second one.
  * @param ... The name of the option and an arbitrary number of parameters. They can include default
  *            parameters at the end. Their syntax is described at the beginning of this file.
@@ -492,11 +488,11 @@ template<typename CabslBehavior> template<void*(descriptor)()> typename Cabsl<Ca
   } \
   void _##name(_CABSL_ATTR_##n params4 const OptionExecution& _o)
 #define _CABSL_OPTION_V(name, hasParams) \
-  static void* _get##name##Descriptor() \
+  static const void* _get##name##Descriptor() \
   { \
-    static OptionDescriptor o(#name, hasParams, reinterpret_cast<void (CabslBehavior::*)(const OptionExecution&)>(&CabslBehavior::name), \
+    static OptionDescriptor descriptor(#name, hasParams, reinterpret_cast<void (CabslBehavior::*)(const OptionExecution&)>(&CabslBehavior::name), \
                               reinterpret_cast<size_t>(&reinterpret_cast<CabslBehavior*>(16)->_##name##Context) - 16); \
-    return &o; \
+    return &descriptor; \
   } \
   OptionInfo<&CabslBehavior::_get##name##Descriptor> _##name##Context;
 
