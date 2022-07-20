@@ -31,10 +31,10 @@
  *
  * <action>      = '{' <C-statements> '}'
  *
- * '<C-ident>' is a normal C++ identifier. '<C-expr>' is a normal C++ 
- * expression that can be used as default value for a parameter. 
+ * '<C-ident>' is a normal C++ identifier. '<C-expr>' is a normal C++
+ * expression that can be used as default value for a parameter.
  * '<C-ifelse>' is a decision tree. It should contain `goto` statements
- * (names of states are labels).  Conditions can use the pre-defined 
+ * (names of states are labels).  Conditions can use the pre-defined
  * symbols 'state_time', 'option_time', 'action_done', and 'action_aborted'.
  * Within a state, the action <C-statements> can contain calls to other
  * (sub)options. 'action_done' determines whether the last sub-option called
@@ -42,7 +42,7 @@
  * does the same for an aborted state.
  *
  * If Microsoft Visual Studio is used and options are included from separate
- * files, the following preprocessor code might be added before including 
+ * files, the following preprocessor code might be added before including
  * this file. "Class" has to be replaced by the template parameter of Cabsl:
  *
  * #ifdef __INTELLISENSE__
@@ -553,7 +553,7 @@ template<typename CabslBehavior> template<void*(descriptor)()> typename Cabsl<Ca
 /**
  * The macro marks an action. It should be followed by a block of code that contains the
  * implementation of the action.
- * The macro adds information about the current option and state to the activation graph, 
+ * The macro adds information about the current option and state to the activation graph,
  * so that it is added before any suboptions called in the action block can add theirs.
  */
 #define action _o.addToActivationGraph();
