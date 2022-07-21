@@ -144,6 +144,27 @@ As can be seen in the following section, the syntax of parameter
 definitions is different from the syntax C++ normally uses.
 
 
+### Dynamic Option Selection
+
+The command `select_option` allows to execute one option from a list of
+options. It is tried to execute each option in the list in the sequence they
+are given. If an option determines that it cannot currently be executed,
+it stays in its `initial_state`. Otherwise, it is run normally. `select_option`
+stops after the first option that was actually executed. Note that an
+option that stays in its `initial_state` when it was called by `select_option`
+is considered as not having been executed at all if it has no action block
+for that state. If it has, the block is still executed, but neither the
+`option_time` nor the `state_time` are increased. A call to `select_option`
+could, e.g., look like this, assuming the three options called behave as it
+was described above:
+
+    select_option({
+      OptionInfos::getOption("play_striker"),
+      OptionInfos::getOption("play_midfielder"),
+      OptionInfos::getOption("play_defender")
+    });
+
+
 ### Grammar
 
     <cabsl>       = { <option> }
@@ -240,9 +261,9 @@ behavior instance.
 
 If there is a file that includes all the options directly and the program
 *dot* by [GraphViz](http://graphviz.org) is installed, the script
-*createGraphs* can be executed to create graphs visualizing the behavior.
-For the example that comes with this release, such graphs can be created
-by executing
+*createGraphs* can be executed to create graphs visualizing the behavior
+(except for options called through `select_option`). For the example that
+comes with this release, such graphs can be created by executing
 
     make graphs
 
@@ -281,6 +302,7 @@ with existing code, because they use rather normal identifiers:
     initial_state
     option
     option_time
+    select_option
     state
     state_time
     target_state
