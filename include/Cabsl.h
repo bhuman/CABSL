@@ -643,8 +643,13 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 
 #endif
 
+/** Define symbol if Microsoft's traditional preprocessor is used. */
+#if defined _MSC_VER && (!defined _MSVC_TRADITIONAL || _MSVC_TRADITIONAL)
+#define _CABSL_MSC
+#endif
+
 /** Check whether an option has parameters. */
-#ifdef _MSC_VER
+#ifdef _CABSL_MSC
 #define _CABSL_HAS_PARAMS(...) _CABSL_JOIN(_CABSL_TUPLE_SIZE_II, (__VA_ARGS__, _CABSL_HAS_PARAMS_II))
 #else
 #define _CABSL_HAS_PARAMS(...) _CABSL_HAS_PARAMS_I((__VA_ARGS__, _CABSL_HAS_PARAMS_II))
@@ -660,7 +665,7 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 /**
  * Determine the number of entries in a tuple.
  */
-#if defined _MSC_VER && !defined Q_MOC_RUN
+#if defined _CABSL_MSC && !defined Q_MOC_RUN
 #define _CABSL_TUPLE_SIZE(...) _CABSL_JOIN(_CABSL_TUPLE_SIZE_II, (__VA_ARGS__, _CABSL_TUPLE_SIZE_III))
 #else
 #define _CABSL_TUPLE_SIZE(...) _CABSL_TUPLE_SIZE_I((__VA_ARGS__, _CABSL_TUPLE_SIZE_III))
@@ -683,7 +688,7 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
  * Determine whether a sequence is of the form "(a) b" or "(a)(b) c".
  * In the first case, 1 is returned, otherwise 2.
  */
-#if !defined _MSC_VER  || defined __INTELLISENSE__ || defined Q_MOC_RUN
+#if !defined _CABSL_MSC  || defined __INTELLISENSE__ || defined Q_MOC_RUN
 #define _CABSL_SEQ_SIZE(...) _CABSL_CAT(_CABSL_SEQ_SIZE, _CABSL_SEQ_SIZE_0 __VA_ARGS__))
 #define _CABSL_SEQ_SIZE_0(...) _CABSL_SEQ_SIZE_1
 #define _CABSL_SEQ_SIZE_1(...) _CABSL_SEQ_SIZE_2
