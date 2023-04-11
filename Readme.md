@@ -365,5 +365,5 @@ of the class in the body of which they are included.
 
  1. Röfer, T. (2018). CABSL – C-Based Agent Behavior Specification Language.
     In: Akiyama, H., Obst, O., Sammut, C., Tonidandel, F. (eds) RoboCup 2017:
-    Robot World Cup XXI. RoboCup 2017. Lecture Notes in Computer Science(),
+    Robot World Cup XXI. RoboCup 2017. Lecture Notes in Computer Science,
     vol 11175. [Springer](https://link.springer.com/chapter/10.1007/978-3-030-00308-1_11), Cham.
