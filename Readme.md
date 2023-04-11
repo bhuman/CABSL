@@ -1,7 +1,7 @@
 # C-based Agent Behavior Specification Language (CABSL)
 
-The *C-based Agent Behavior Specification Language* (CABSL) allows
-specifying the behavior of a robot or a software agent in C++11.
+The *C-based Agent Behavior Specification Language* (CABSL) [[1]](#references)
+allows specifying the behavior of a robot or a software agent in C++11.
 Semantically, it follows the ideas of the *Extensible Agent Behavior
 Specification Language* [XABSL](http://www.xabsl.de) developed by Martin
 Lötzsch, Max Risler, and Matthias Jüngel, but its integration into a
@@ -359,3 +359,11 @@ files, the following preprocessor code should be added before including
 `Class` has to be replaced by the template parameter of `Cabsl`. The
 prefix helps Intellisense to understand that the options are actually part
 of the class in the body of which they are included.
+
+
+## References
+
+ 1. Röfer, T. (2018). CABSL – C-Based Agent Behavior Specification Language.
+    In: Akiyama, H., Obst, O., Sammut, C., Tonidandel, F. (eds) RoboCup 2017:
+    Robot World Cup XXI. RoboCup 2017. Lecture Notes in Computer Science(),
+    vol 11175. [Springer](https://link.springer.com/chapter/10.1007/978-3-030-00308-1_11), Cham.
