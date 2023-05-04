@@ -330,7 +330,7 @@ state defines an unreachable `goto` statement to the label
 compiler will ensure that there is exactly one initial state if the option
 has at least one state. If the compiler warning for unused labels is
 enabled, the compiler will warn if there are unreachable states. There is
-also an assertion which checks that never more then a single transition 
+also an assertion which checks that never more than a single transition 
 block is executed per option and execution cycle at runtime. This should
 catch some errors, that result from the CABSL macros not being used as
 intended.
