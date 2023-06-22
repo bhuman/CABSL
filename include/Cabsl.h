@@ -98,7 +98,8 @@ protected:
 
     int state; /**< The state currently selected. This is actually the line number in which the state was declared. */
     const char* stateName; /**< The name of the state (for activation graph). */
-    unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed. */
+    unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (except for the initial state when called from \c select_option). */
+    unsigned lastSelectFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (in any case). */
     unsigned optionStart; /**< The time when the option started to run (for option_time). */
     unsigned stateStart; /**< The time when the current state started to run (for state_time). */
     StateType stateType; /**< The type of the current state in this option. */
@@ -136,8 +137,9 @@ protected:
         context.stateStart = instance->_currentFrameTime; // initial state started now
         context.state = 0; // initial state is always marked with a 0
         context.stateType = OptionContext::initialState;
-        context.subOptionStateType = OptionContext::normalState; // reset action_done and action_aborted
       }
+      if(context.lastSelectFrame != instance->lastFrameTime && context.lastSelectFrame != instance->_currentFrameTime)
+        context.subOptionStateType = OptionContext::normalState; // reset action_done and action_aborted
       context.addedToGraph = false; // not added to graph yet
       context.transitionExecuted = false; // no transition executed yet
       context.hasCommonTransition = false; // until one is found, it is assumed that there is no common transition
@@ -154,6 +156,7 @@ protected:
         addToActivationGraph(); // add to activation graph if it has not been already
         context.lastFrame = instance->_currentFrameTime; // Remember that this option was called in this frame
       }
+      context.lastSelectFrame = instance->_currentFrameTime; // Remember that this option was called in this frame (even in select_option/initial)
       --instance->depth; // decrease depth counter for activation graph
       context.subOptionStateType = instance->stateType; // remember the state type of the last sub option called
       instance->stateType = context.stateType; // publish the state type of this option, so the caller can grab it
