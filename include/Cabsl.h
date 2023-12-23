@@ -325,27 +325,22 @@ public:
   class OptionInfos
   {
   private:
-    static std::vector<const OptionDescriptor*>* optionsByIndex; /**< All argumentless options in the sequence they were declared. */
     static std::unordered_map<std::string, const OptionDescriptor*>* optionsByName; /**< All argumentless options, indexed by their names. */
     static std::vector<void (*)()>* modifyHandlers; /**< All modify handlers for options with definitions. */
 
   public:
-    enum Option : unsigned char {none}; /**< A dummy enum for all options. */
-
     /** The constructor prepares the collection of information if this has not been done yet. */
     OptionInfos()
     {
-      if(!optionsByIndex)
+      if(!optionsByName)
         init();
     }
 
     /** The destructor frees the global object. */
     ~OptionInfos()
     {
-      delete optionsByIndex;
       delete optionsByName;
       delete modifyHandlers;
-      optionsByIndex = nullptr;
       optionsByName = nullptr;
       modifyHandlers = nullptr;
     }
@@ -356,12 +351,9 @@ public:
      */
     static void init()
     {
-      assert(!optionsByIndex);
       assert(!optionsByName);
-      optionsByIndex = new std::vector<const OptionDescriptor*>;
       optionsByName = new std::unordered_map<std::string, const OptionDescriptor*>;
       static OptionDescriptor descriptor("none", 0, 0);
-      optionsByIndex->push_back(&descriptor);
       (*optionsByName)[descriptor.name] = &descriptor;
     }
 
@@ -369,24 +361,19 @@ public:
      * The method adds information about an option to the collections.
      * It will be called from the constructors of static objects created for each
      * option.
-     * Note that options with arguments will be ignored, because they currently
-     * cannot be called externally.
+     * This method is only called for options without arguments, because only they
+     * can be called externally.
      * @param fnDescriptor A function that can return the description of an option.
      */
     static void add(OptionDescriptor*(*fnDescriptor)())
     {
-      if(!optionsByIndex)
+      if(!optionsByName)
         init();
 
-      assert(optionsByIndex);
       assert(optionsByName);
       OptionDescriptor& descriptor = *fnDescriptor();
       if(optionsByName->find(descriptor.name) == optionsByName->end()) // only register once
-      {
-        descriptor.index = static_cast<int>(optionsByIndex->size());
-        optionsByIndex->push_back(&descriptor);
         (*optionsByName)[descriptor.name] = &descriptor;
-      }
     }
 
     /**
@@ -401,47 +388,19 @@ public:
     }
 
     /**
-     * The method returns the name of an option.
-     * It is required to make the option enum streamable.
-     * @param option The index of the option.
-     * @return The name of the option.
-     */
-    static const char* getName(Option option)
-    {
-      if(static_cast<unsigned>(option) >= optionsByIndex->size())
-        return nullptr;
-      else
-        return (*optionsByIndex)[option]->name;
-    }
-
-    /**
-     * The method returns the enum constant of an option.
-     * @param name The name of the option.
-     * @return The enum constant (i.e. the index) of an option. If the name is not known,
-     *         the constant "none" will be returned.
-     */
-    static Option getOption(const char* name)
-    {
-      const auto i = optionsByName->find(name);
-      if(i == optionsByName->end())
-        return none;
-      else
-        return static_cast<Option>(i->second->index);
-    }
-
-    /**
      * The method executes a certain option. Note that only argumentless options can be
      * executed.
      * @param behavior The behavior instance.
-     * @param option The index of the option.
+     * @param option The name of the option.
      * @param fromSelect Was this method called fron "select_option"?
      * @return Was the option actually executed?
      */
-    static bool execute(CabslBehavior* behavior, Option option, bool fromSelect = false)
+    static bool execute(CabslBehavior* behavior, const std::string& option, bool fromSelect = false)
     {
-      if(option != none && option < static_cast<int>(optionsByIndex->size()))
+      auto pair = optionsByName->find(option);
+      if(pair != optionsByName->end())
       {
-        const OptionDescriptor& descriptor = *(*optionsByIndex)[option];
+        const OptionDescriptor& descriptor = *pair->second;
         OptionContext& context = *reinterpret_cast<OptionContext*>(reinterpret_cast<char*>(behavior) + descriptor.offsetOfContext);
         (behavior->*(descriptor.option))(OptionExecution(descriptor.name, context, behavior, fromSelect));
         return context.stateType != OptionContext::initialState;
@@ -454,12 +413,12 @@ public:
      * The method executes a list of options. It stops after the first option that reports that
      * it was actually executed.
      * @param behavior The behavior instance.
-     * @param options The list of options. The options are executed in that order.
+     * @param options The list of option names. The options are executed in that order.
      * @return Was an option actually executed?
      */
-    static bool execute(CabslBehavior* behavior, const std::vector<Option>& options)
+    static bool execute(CabslBehavior* behavior, const std::vector<std::string>& options)
     {
-      for(Option option : options)
+      for(const std::string& option : options)
         if(execute(behavior, option, true))
           return true;
       return false;
@@ -522,7 +481,7 @@ protected:
 
 public:
   /**
-   * Must be call at the beginning of each behavior execution cycle.
+   * Must be call at the beginning of each behavior execution cycle even if no option is called.
    * @param frameTime The current time in ms.
    */
   void beginFrame(unsigned frameTime)
@@ -539,12 +498,12 @@ public:
    * Several root options can be executed in a single behavior execution cycle.
    * @param root The root option that is executed.
    */
-  void execute(typename OptionInfos::Option root)
+  void execute(const std::string& root)
   {
     OptionInfos::execute(static_cast<CabslBehavior*>(this), root);
   }
 
-  /** Must be called at the end of each behavior execution cycle. */
+  /** Must be called at the end of each behavior execution cycle even if no option is called. */
   void endFrame()
   {
     _theInstance = nullptr;
@@ -553,7 +512,6 @@ public:
 };
 
 template<typename CabslBehavior> thread_local Cabsl<CabslBehavior>* Cabsl<CabslBehavior>::_theInstance;
-template<typename CabslBehavior> std::vector<const typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByIndex;
 template<typename CabslBehavior> std::unordered_map<std::string, const typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByName;
 template<typename CabslBehavior> std::vector<void (*)()>* Cabsl<CabslBehavior>::OptionInfos::modifyHandlers;
 template<typename CabslBehavior> typename Cabsl<CabslBehavior>::OptionInfos Cabsl<CabslBehavior>::collectOptions;
@@ -709,7 +667,7 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 
 /**
  * Executes the first applicable option from a list.
- * @param ... The list of options as a std::vector<OptionInfos::Option>.
+ * @param ... The list of options as a std::vector<std::string>.
  * @return Was an option executed?
  */
 #define select_option(...) OptionInfos::execute(this, __VA_ARGS__)
