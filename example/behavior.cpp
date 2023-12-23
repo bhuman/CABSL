@@ -26,7 +26,7 @@ Behavior::Action Behavior::team_ball_direction[4];
 
 Behavior::Action Behavior::execute(int local_area[9], Action ball_direction, int x, int y) {
 
-  // copy parameters
+  // copy arguments
   std::memcpy(this->local_area, local_area, sizeof(this->local_area));
   this->ball_direction = team_ball_direction[player_number] = ball_direction;
   this->x = team_x[player_number] = x;
@@ -168,8 +168,8 @@ void Behavior::showActivationGraph()
     mvwprintw(window, y, activeOption.depth - 1, "%s", activeOption.option.c_str());
     mvwprintw(window, y++, 35, "%4d", activeOption.optionTime);
 
-    for(const std::string& parameter : activeOption.parameters)
-      mvwprintw(window, y++, activeOption.depth + 1, "%s", parameter.c_str());
+    for(const std::string& argument : activeOption.arguments)
+      mvwprintw(window, y++, activeOption.depth + 1, "%s", argument.c_str());
 
     mvwprintw(window, y, activeOption.depth + 1, "state = %s", activeOption.state.c_str());
     mvwprintw(window, y++, 35, "%4d", activeOption.stateTime);

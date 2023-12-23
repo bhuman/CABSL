@@ -18,13 +18,13 @@ struct ActivationGraph
     Node() = default;
     Node(const std::string& option, int depth,
          const std::string& state, int optionTime,
-         int stateTime, const std::vector<std::string>& parameters) :
+         int stateTime, const std::vector<std::string>& arguments) :
       option(option),
       depth(depth),
       state(state),
       optionTime(optionTime),
       stateTime(stateTime),
-      parameters(parameters)
+      arguments(arguments)
     {
     }
 
@@ -33,7 +33,7 @@ struct ActivationGraph
     std::string state;
     int optionTime = 0;
     int stateTime = 0;
-    std::vector<std::string> parameters;
+    std::vector<std::string> arguments;
   };
 
   ActivationGraph()
