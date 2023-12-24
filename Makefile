@@ -23,10 +23,10 @@ rollers.o: ascii-soccer/teams/rollers/main.c ascii-soccer/soccer.h ascii-soccer/
 	gcc -w -Iascii-soccer -DWEST_TEAM -c ascii-soccer/teams/rollers/main.c -o rollers.o
 
 behavior.o: example/behavior.cpp ascii-soccer/soccer.h $(BEHAVIOR)
-	g++ -w -std=c++11 -Iascii-soccer -Iinclude -c example/behavior.cpp
+	g++ -w -std=c++20 -Iascii-soccer -Iinclude -c example/behavior.cpp
 
 cabsl.o: example/main.cpp ascii-soccer/soccer.h ascii-soccer/players.h $(BEHAVIOR)
-	g++ -w -std=c++11 -Iascii-soccer -Iinclude -DEAST_TEAM -c example/main.cpp -o cabsl.o
+	g++ -w -std=c++20 -Iascii-soccer -Iinclude -DEAST_TEAM -c example/main.cpp -o cabsl.o
 
 graphs:
 	bin/createGraphs example/options.h

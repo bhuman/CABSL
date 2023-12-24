@@ -11,7 +11,7 @@ option(defender) {
         goto opponent_team_has_ball;
     }
     action {
-      go_to(ball_x + 12, ball_y);
+      go_to({.x = ball_x + 12, .y = ball_y});
     }
   }
 
@@ -22,7 +22,7 @@ option(defender) {
         goto own_team_has_ball;
     }
     action {
-      go_to(ball_x + 10, ball_y);
+      go_to({.x = ball_x + 10, .y = ball_y});
     }
   }
 }

@@ -16,7 +16,7 @@ option(midfielder) {
       }
     }
     action {
-      go_to(ball_x, ball_y);
+      go_to({.x = ball_x, .y = ball_y});
     }
   }
 

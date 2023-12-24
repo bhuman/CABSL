@@ -3,7 +3,7 @@
  *
  * @author Thomas Röfer
  */
-option(set_action, (Action) next_action) {
+option(set_action, args((Action) next_action)) {
   initial_state(set) {
     action {
       this->next_action = next_action;

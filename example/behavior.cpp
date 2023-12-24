@@ -36,7 +36,7 @@ Behavior::Action Behavior::execute(int local_area[9], Action ball_direction, int
 
   // execute behavior
   beginFrame(frame_counter++);
-  Cabsl<Behavior>::execute(OptionInfos::getOption("play_soccer"));
+  Cabsl<Behavior>::execute("play_soccer");
   endFrame();
 
   showActivationGraph();

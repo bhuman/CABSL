@@ -6,7 +6,7 @@
 option(striker) {
   initial_state(initial) {
     action {
-      go_to(ball_x - 8, 11);
+      go_to({.x = ball_x - 8, .y = 11});
     }
   }
 }

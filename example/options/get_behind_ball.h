@@ -37,43 +37,43 @@ option(get_behind_ball) {
 
   initial_state(use_direction) {
     action {
-      set_action(ball_direction);
+      set_action({.next_action = ball_direction});
     }
   }
 
   state(north) {
     action {
-      set_action(N);
+      set_action({.next_action = N});
     }
   }
 
   state(north_east) {
     action {
-      set_action(NE);
+      set_action({.next_action = NE});
     }
   }
 
   state(east) {
     action {
-      set_action(E);
+      set_action({.next_action = E});
     }
   }
 
   state(south_east) {
     action {
-      set_action(SE);
+      set_action({.next_action = SE});
     }
   }
 
   state(south) {
     action {
-      set_action(S);
+      set_action({.next_action = S});
     }
   }
 
   state(west) {
     action {
-      set_action(W);
+      set_action({.next_action = W});
     }
   }
 }

@@ -117,6 +117,11 @@
 #include <unordered_map>
 #include "ActivationGraph.h"
 
+/** Reject Microsoft's traditional preprocessor. */
+#if defined _MSC_VER && (!defined _MSVC_TRADITIONAL || _MSVC_TRADITIONAL)
+#error "This code requires the standard preprocessor (/Zc:preprocessor)."
+#endif
+
 /**
  * Base class for helper structures that makes sure that the
  * destructor is virtual.
@@ -518,6 +523,14 @@ template<typename CabslBehavior> typename Cabsl<CabslBehavior>::OptionInfos Cabs
 template<typename CabslBehavior> template<const void*(descriptor)()> typename Cabsl<CabslBehavior>::template OptionInfo<descriptor>::Registrar Cabsl<CabslBehavior>::OptionInfo<descriptor>::registrar;
 
 /**
+ * Together with decltype, the following template allows to use any type
+ * for declarations, even array types such as int[4]. It also works with
+ * template parameters without the use of typename.
+ * decltype(CabslTypeWrapper<myType>::type) myVar;
+ */
+template<typename T> struct CabslTypeWrapper {static T type;};
+
+/**
  * The macro defines a state. It must be followed by a block of code that defines the state's body.
  * @param name The name of the state.
  */
@@ -538,66 +551,478 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 #define aborted_state(name) _state(name, __LINE__, OptionContext::abortedState)
 
 /**
- * The macro defines an option. It must be followed by a block of code that defines the option's body
- * The option gets an additional parameter that manages its context. If the option has parameters,
- * two methods are generated. The first one adds the parameters to the execution environment and calls
+ * The macro defines an option. It must be followed by a block of code that defines the option's body.
+ * The option gets an additional argument that manages its context. If the option has arguments,
+ * two methods are generated. The first one adds the arguments to the execution environment and calls
  * the second one.
- * @param ... The name of the option and an arbitrary number of parameters. They can include default
- *            parameters at the end. Their syntax is described at the beginning of this file.
+ * @param ... The name of the option and an arbitrary number of arguments. They can include default
+ *            arguments at the end. Their syntax is described at the beginning of this file.
  */
-#define option(...) \
-  _CABSL_OPTION_I(_CABSL_HAS_PARAMS(__VA_ARGS__), __VA_ARGS__)
-#define _CABSL_OPTION_I(hasParams, ...) _CABSL_OPTION_II(hasParams, (__VA_ARGS__))
-#define _CABSL_OPTION_II(hasParams, params) _CABSL_OPTION_##hasParams params
+#define option(...) _CABSL_OPTION(_CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
 
-/** Macro specialization for option with parameters. */
-#define _CABSL_OPTION_1(name, ...) _CABSL_OPTION_III(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), name, __VA_ARGS__, ignore)
+// Determine whether a class, arguments, definitions, and/or variables were specified.
+// Then _CABSL_OPTION_II is called with all this information.
+#define _CABSL_OPTION(n, ...) _CABSL_JOIN(_CABSL_OPTION_, n) (__VA_ARGS__)
+#define _CABSL_OPTION_1(name) _CABSL_OPTION_I(name, , , , , ignore)
+#define _CABSL_OPTION_2(name, ...) _CABSL_OPTION_I(name, _CABSL_HAS_ARGS(__VA_ARGS__), _CABSL_HAS_DEFS(__VA_ARGS__), _CABSL_HAS_LOAD(__VA_ARGS__), _CABSL_HAS_VARS(__VA_ARGS__), __VA_ARGS__)
+#define _CABSL_OPTION_3(...) _CABSL_OPTION_2(__VA_ARGS__)
+#define _CABSL_OPTION_4(...) _CABSL_OPTION_2(__VA_ARGS__)
+#define _CABSL_OPTION_I(name, hasArgs, hasDefs, hasLoad, hasVars, ...) _CABSL_JOIN(_CABSL_OPTION_I_, _CABSL_SEQ_SIZE(name))(name, hasArgs, hasDefs, hasLoad, hasVars, __VA_ARGS__)
+#define _CABSL_OPTION_I_0(name, hasArgs, hasDefs, hasLoad, hasVars, ...) _CABSL_OPTION_II(name, , , hasArgs, hasDefs, hasLoad, hasVars, __VA_ARGS__)
+#define _CABSL_OPTION_I_1(name, hasArgs, hasDefs, hasLoad, hasVars, ...) _CABSL_OPTION_II(_CABSL_VAR(name), _CABSL_OPTION_I_1_I(name), 1, hasArgs, hasDefs, hasLoad, hasVars, __VA_ARGS__)
+#define _CABSL_OPTION_I_1_I(name) _CABSL_DECL_I name))
 
-/** Generate an attribute declaration without an initialization. */
-#define _CABSL_DECL_WITHOUT_INIT(seq) _CABSL_DECL_IV seq)) _CABSL_VAR(seq);
+// Generate the actual code for the option header. The "has" parameters are either
+// "1" or empty.
+#define _CABSL_OPTION_II(name, class, hasClass, hasArgs, hasDefs, hasLoad, hasVars, ...) \
+  _CABSL_DECL_CONTEXT_##hasClass##_##hasArgs(name) \
+  _CABSL_STRUCT_ARGS_##hasClass##_##hasArgs(name, __VA_ARGS__) \
+  _CABSL_NAMESPACE_BEGIN_##hasClass(class) \
+  _CABSL_STRUCT_DEFS_##hasDefs(name, __VA_ARGS__) \
+  _CABSL_STRUCT_VARS_##hasVars(name, __VA_ARGS__) \
+  _CABSL_NAMESPACE_END_##hasClass(class) \
+  _CABSL_MODIFY_DEFS_##hasClass##_##hasDefs##_##hasLoad(name, class) \
+  _CABSL_FUNS_##hasClass##_##hasArgs##_##hasDefs##_##hasVars(name, class, __VA_ARGS__)
 
-/** Generate a parameter declaration with an initialization if avaliable. */
-#define _CABSL_PARAM_WITH_INIT(seq) _CABSL_DECL_IV seq)) _CABSL_VAR(seq) _CABSL_INIT(seq),
-
-/** Generate a parameter declaration without an initialization. */
-#define _CABSL_PARAM_WITHOUT_INIT(seq) _CABSL_DECL_IV seq)) _CABSL_VAR(seq),
-
-/** Generate a parameter declaration without an initialization (without comma). */
-#define _CABSL_PARAM_WITHOUT_INIT2(seq) _CABSL_DECL_IV seq)) _CABSL_VAR(seq)
-
-/** Generate a variable name for the list of actual parameters of a method call. */
-#define _CABSL_VAR_COMMA(seq) _CABSL_VAR(seq),
-
-/** Generate code for streaming a variable and adding it to the parameters stored in the execution environment. */
-#define _CABSL_STREAM(seq) \
-  _CABSL_JOIN(_CABSL_STREAM_, _CABSL_SEQ_SIZE(seq))(seq) \
-    _o.addArgument(#seq, _CABSL_VAR(seq));
-
-#ifndef __INTELLISENSE__
-
-/** Macro specialization for parameterless option. */
-#define _CABSL_OPTION_0(name) \
+// Declare the option context if executed in the header file (inline).
+// Also generate registration method for the option if it has no arguments.
+#define _CABSL_DECL_CONTEXT__(name) \
   static const void* _get##name##Descriptor() \
   { \
     static OptionDescriptor descriptor(#name, reinterpret_cast<void (CabslBehavior::*)(const OptionExecution&)>(&CabslBehavior::name), \
                               reinterpret_cast<size_t>(&reinterpret_cast<CabslBehavior*>(16)->_##name##Context) - 16); \
     return &descriptor; \
   } \
-  OptionInfo<&CabslBehavior::_get##name##Descriptor> _##name##Context; \
-  void name(const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance))
-#define _CABSL_OPTION_III(n, name, ...) _CABSL_OPTION_IV(n, name, (_CABSL_PARAM_WITH_INIT, __VA_ARGS__), (_CABSL_VAR_COMMA, __VA_ARGS__), (_CABSL_STREAM, __VA_ARGS__), (_CABSL_PARAM_WITHOUT_INIT, __VA_ARGS__))
-#define _CABSL_OPTION_IV(n, name, params1, params2, params3, params4) \
-  OptionContext _##name##Context; \
-  void name(_CABSL_ATTR_##n params1 const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance)) \
-  { \
-    _CABSL_ATTR_##n params3 \
-    _##name(_CABSL_ATTR_##n params2 _o); \
-  } \
-  void _##name(_CABSL_ATTR_##n params4 const OptionExecution& _o)
+  OptionInfo<&CabslBehavior::_get##name##Descriptor> _##name##Context;
+#define _CABSL_DECL_CONTEXT_1_(name, ...)
+#define _CABSL_DECL_CONTEXT__1(name, ...) \
+  OptionContext _##name##Context;
+#define _CABSL_DECL_CONTEXT_1_1(name, ...)
 
-/** If a default value exists, only stream parameters that are different from it. */
-#define _CABSL_STREAM_1(seq)
-#define _CABSL_STREAM_2(seq) if(!(_CABSL_VAR(seq) == _CABSL_INIT_II seq) _CABSL_INIT_I_2_I(seq)))
+// Define a structure that contains arguments.
+// The structure is only defined if it is needed (second "1" of the name).
+// It is only defined if the first "1" is not present, because the structure
+// for arguments is only defined inline, never in the implementation file.
+#define _CABSL_STRUCT_ARGS__(name, ...)
+#define _CABSL_STRUCT_ARGS_1_(name, ...)
+#define _CABSL_STRUCT_ARGS__1(name, ...) _CABSL_STRUCT_ARGS_I(name, _CABSL_GET_ARGS(__VA_ARGS__), ignore)
+#define _CABSL_STRUCT_ARGS_I(name, ...) _CABSL_STRUCT_ARGS_II(name, _CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
+#define _CABSL_STRUCT_ARGS_II(name, n, ...) _CABSL_STRUCT_ARGS_III(name, n, (_CABSL_STRUCT_WITH_INIT, __VA_ARGS__))
+#define _CABSL_STRUCT_ARGS_III(name, n, pair) \
+  struct _##name##Args \
+  { \
+    _CABSL_ATTR_##n pair \
+  };
+#define _CABSL_STRUCT_ARGS_1_1(name, ...)
+
+// Generate the declaration and optional initialization of a field in the structure.
+#define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
+
+// Define a structure for definitions. They are streamable, so the STREAMABLE macro is used.
+#define _CABSL_STRUCT_DEFS_(name, ...)
+#define _CABSL_STRUCT_DEFS_1(name, ...) _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__))
+#define _CABSL_STRUCT_DEFS_I(name, ...) STREAMABLE(_##name##Defs, {, __VA_ARGS__, });
+
+// Define a structure that contains variables.
+// The structure is only defined if it is needed (addition "1" of the name).
+#define _CABSL_STRUCT_VARS_(name, ...)
+#define _CABSL_STRUCT_VARS_1(name, ...) _CABSL_STRUCT_VARS_I(name, _CABSL_GET_VARS(__VA_ARGS__), ignore)
+#define _CABSL_STRUCT_VARS_I(name, ...) _CABSL_STRUCT_VARS_II(name, _CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
+#define _CABSL_STRUCT_VARS_II(name, n, ...) _CABSL_STRUCT_VARS_III(name, n, (_CABSL_STRUCT_WITHOUT_INIT, __VA_ARGS__))
+#define _CABSL_STRUCT_VARS_III(name, n, pair) \
+  struct _##name##Vars : public CabslStructBase \
+  { \
+    _CABSL_ATTR_##n pair \
+  };
+
+// Generate the declaration of a field in the structure.
+#define _CABSL_STRUCT_WITHOUT_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq);
+
+// Define a modify handler and a function that registers it.
+// It is distinguished whether a class was specified (implementation file) or not (header) and
+// whether there actually are definitions.
+#define _CABSL_MODIFY_DEFS___(name, class) \
+  static void _##name##Modify(); \
+  static void _##name##ModifyReg();
+#define _CABSL_MODIFY_DEFS_1__(name, class)
+#define _CABSL_MODIFY_DEFS__1_(name, class) _CABSL_MODIFY_DEFS_I(name, , static, )
+#define _CABSL_MODIFY_DEFS__1_1(name, class) _CABSL_MODIFY_DEFS_I(name, , static, InMapFile _stream("option" #name ".cfg"); ASSERT(_stream.exists()); _stream >> *_defs;)
+#define _CABSL_MODIFY_DEFS_1_1_(name, class) _CABSL_MODIFY_DEFS_I(name, class::, , )
+#define _CABSL_MODIFY_DEFS_1_1_1(name, class) _CABSL_MODIFY_DEFS_I(name, class::, , InMapFile _stream("option" #name ".cfg"); ASSERT(_stream.exists()); _stream >> *_defs;)
+#define _CABSL_MODIFY_DEFS_I(name, class, prefix, load) \
+  prefix void class _##name##Modify() \
+  { \
+    _##name##Defs*& _defs = reinterpret_cast<_##name##Defs*&>(static_cast<CabslBehavior*>(_theInstance)->_##name##Context.defs); \
+    if(!_defs) \
+    { \
+      _defs = new _##name##Defs(); \
+      load \
+    } \
+    MODIFY("option:" #name, *_defs); \
+  } \
+  prefix void class _##name##ModifyReg() \
+  { \
+    PUBLISH(_##name##ModifyReg); \
+    OptionInfos::add(&CabslBehavior::_##name##Modify); \
+  }
+
+// Generate start of namespace if used in implementation file.
+#define _CABSL_NAMESPACE_BEGIN_(class)
+#define _CABSL_NAMESPACE_BEGIN_1(class) namespace _ns##class {
+
+// Generate end of namespace if used in implementation file. Import the namespace, so
+// some other macros do not need to distinguish between the namespace/no namespace cases.
+#define _CABSL_NAMESPACE_END_(class)
+#define _CABSL_NAMESPACE_END_1(class) } using namespace _ns##class;
+
+// Generate 16 different versions based on the parameters specified:
+// - Class name defined (not inline, i.e. in implementation file) or not (inline in class body)
+// - Arguments defined or not
+// - Definitions defined or not
+// - Variables defined or not
+
+// Inline, no args, no defs, no vars
+#define _CABSL_FUNS____(name, class, ...) \
+  _CABSL_NOARGS_HEAD(name)
+
+// Not inline, no args, no defs, no vars
+// Option is called directly. Default argument was declared in header.
+#define _CABSL_FUNS_1___(name, class, ...) \
+  void class::name(const OptionExecution& _o)
+
+// Inline, args, no defs, no vars
+// Helper needed to stream and translate arguments.
+#define _CABSL_FUNS__1__(name, class, ...) \
+  _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, args, no defs, no vars
+// Helper was declared in header that calls actual option.
+// There should be no defaults for arguments. Generate them if they are, so the compiler will complain.
+#define _CABSL_FUNS_1_1__(name, class, ...) \
+  void class::_##name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Inline, no args, defs, no vars
+// Helper needed to handle defs.
+#define _CABSL_FUNS___1_(name, class, ...) \
+  _CABSL_NOARGS_HEAD(name) \
+  { \
+    _CABSL_DEFS_IMPL(name) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, no args, defs, no vars
+// Helper needed to handle defs. Wrapper class needed to define another method.
+#define _CABSL_FUNS_1__1_(name, class, ...) \
+  namespace _ns##class \
+  { \
+    struct name##Wrapper : public class \
+    { \
+      void name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o); \
+    }; \
+  } \
+  void class::name(const OptionExecution& _o) \
+  { \
+    _CABSL_DEFS_IMPL(name) \
+    reinterpret_cast<_ns##class::name##Wrapper*>(this)->name(_CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _o); \
+  } \
+  void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Inline, args, defs, no vars
+// Helper needed to stream and translate arguments and handle defs.
+#define _CABSL_FUNS__1_1_(name, class, ...) \
+  _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
+    _CABSL_DEFS_IMPL(name) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, args, defs, no vars
+// Header already handled args. Second helper needed to handle defs.
+// Wrapper class needed to define a third method.
+#define _CABSL_FUNS_1_1_1_(name, class, ...) \
+  namespace _ns##class \
+  { \
+    struct name##Wrapper : public class \
+    { \
+      void name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o); \
+    }; \
+  } \
+  void class::_##name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o) \
+  { \
+    _CABSL_DEFS_IMPL(name) \
+    reinterpret_cast<_ns##class::name##Wrapper*>(this)->name(_CABSL_APPLY(_CABSL_PASS_PARAM, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _o); \
+  } \
+  void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Inline, no args, no defs, vars
+// Helper needed to handle vars.
+#define _CABSL_FUNS____1(name, class, ...) \
+  _CABSL_NOARGS_HEAD(name) \
+  { \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, no args, no defs, vars
+// Helper needed to handle vars. Wrapper class needed to define another method.
+#define _CABSL_FUNS_1___1(name, class, ...) \
+  namespace _ns##class \
+  { \
+    struct name##Wrapper : public class \
+    { \
+      void name(_CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o); \
+    }; \
+  } \
+  void class::name(const OptionExecution& _o) \
+  { \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    reinterpret_cast<_ns##class::name##Wrapper*>(this)->name(_CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Inline, args, no defs, vars
+// Helper needed to stream and translate arguments and handle vars.
+#define _CABSL_FUNS__1__1(name, class, ...) \
+  _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, args, no defs, vars
+// Header already handled args. Second helper needed to handle vars.
+// Wrapper class needed to define a third method.
+#define _CABSL_FUNS_1_1__1(name, class, ...) \
+  namespace _ns##class \
+  { \
+    struct name##Wrapper : public class \
+    { \
+      void name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o); \
+    }; \
+  } \
+  void class::_##name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o) \
+  { \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    reinterpret_cast<_ns##class::name##Wrapper*>(this)->name(_CABSL_APPLY(_CABSL_PASS_PARAM, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Inline, no args, defs, vars
+// Helper needed to handle defs and vars.
+#define _CABSL_FUNS___1_1(name, class, ...) \
+  _CABSL_NOARGS_HEAD(name) \
+  { \
+    _CABSL_DEFS_IMPL(name) \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, no args, defs, vars
+// Helper needed to handle defs and vars. Wrapper class needed to define another method.
+#define _CABSL_FUNS_1__1_1(name, class, ...) \
+  namespace _ns##class \
+  { \
+    struct name##Wrapper : public class \
+    { \
+      void name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o); \
+    }; \
+  } \
+  void class::name(const OptionExecution& _o) \
+  { \
+    _CABSL_DEFS_IMPL(name) \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    reinterpret_cast<_ns##class::name##Wrapper*>(this)->name(_CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Inline, args, defs, vars
+// Helper needed to stream and translate arguments and handle defs and vars.
+#define _CABSL_FUNS__1_1_1(name, class, ...) \
+  _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
+    _CABSL_DEFS_IMPL(name) \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    _##name(_CABSL_APPLY(_CABSL_PASS_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Not inline, args, defs, vars
+// Header already handled args. Second helper needed to handle defs and vars.
+// Wrapper class needed to define a third method.
+#define _CABSL_FUNS_1_1_1_1(name, class, ...) \
+  namespace _ns##class \
+  { \
+    struct name##Wrapper : public class \
+    { \
+      void name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o); \
+    }; \
+  } \
+  void class::_##name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o) \
+  { \
+    _CABSL_DEFS_IMPL(name) \
+    _CABSL_VARS_IMPL(name, __VA_ARGS__) \
+    reinterpret_cast<_ns##class::name##Wrapper*>(this)->name(_CABSL_APPLY(_CABSL_PASS_PARAM, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_PASS_VAR, _CABSL_GET_VARS(__VA_ARGS__)) _o); \
+  } \
+  void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
+
+// Method head for option without arguments.
+#define _CABSL_NOARGS_HEAD(name) \
+  void name(const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance))
+
+// Method head for option with arguments. Also streams the arguments.
+#define _CABSL_ARGS_HEAD(name, ...) \
+  template<typename U = _##name##Args> typename std::enable_if<std::is_default_constructible<U>::value>::type \
+  name(const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance)) \
+  { \
+    name(_##name##Args(), _o); \
+  } \
+  void name(const _##name##Args& _args, const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance)) \
+  { \
+    _CABSL_APPLY(_CABSL_STREAM_ARG, _CABSL_GET_ARGS(__VA_ARGS__))
+
+// Implementation for definitions.
+#define _CABSL_DEFS_IMPL(name) \
+  _##name##Defs* _defs = reinterpret_cast<_##name##Defs*>(_o.context.defs);
+
+// Implementation for option variables. If they do not exist yet, they are allocated.
+// In the initial state, they are reset. They are also streamed.
+#define _CABSL_VARS_IMPL(name, ...) \
+  _##name##Vars*& _vars = reinterpret_cast<_##name##Vars*&>(_o.context.vars); \
+  if(!_vars) \
+    _vars = new _##name##Vars(); \
+  if(_o.context.stateType == OptionContext::initialState && !option_time) \
+  { \
+    _CABSL_APPLY(_CABSL_INIT_VAR, _CABSL_GET_VARS(__VA_ARGS__)) \
+  } \
+  _CABSL_APPLY(_CABSL_STREAM_VAR, _CABSL_GET_VARS(__VA_ARGS__)) \
+
+// Assign a value to a variable.
+#define _CABSL_INIT_VAR(seq) _vars->_CABSL_VAR(seq) = _CABSL_INIT_I_2_I(seq);
+
+// Apply a macro to all values in a list.
+#define _CABSL_APPLY(macro, ...) _CABSL_APPLY_I(macro, _CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__)
+#define _CABSL_APPLY_I(macro, n, ...) _CABSL_APPLY_II(n, (macro, __VA_ARGS__, ignore))
+#define _CABSL_APPLY_II(n, pair) _CABSL_ATTR_##n pair
+
+// Generate an initialization if the declaration contains one.
+#define _CABSL_INIT(seq) _CABSL_JOIN(_CABSL_INIT_I_, _CABSL_SEQ_SIZE(seq))(seq)
+#define _CABSL_INIT_I_1(...)
+#define _CABSL_INIT_I_2(...) = _CABSL_INIT_I_2_I(__VA_ARGS__)
+
+// Generate code for streaming an argument and adding it to the arguments stored in the execution environment.
+#define _CABSL_STREAM_ARG(seq) \
+  _CABSL_JOIN(_CABSL_STREAM_ARG_, _CABSL_SEQ_SIZE(seq))(seq) \
+    _o.addArgument(#seq, _args._CABSL_VAR(seq));
+
+// If a default value exists, only stream arguments that are different from it.
+#define _CABSL_STREAM_ARG_1(seq)
+#define _CABSL_STREAM_ARG_2(seq) if(const decltype(_args._CABSL_VAR(seq))& _p = _CABSL_INIT_I_2_I(seq); \
+    !(_args._CABSL_VAR(seq) == _p))
+
+// Generate an argument declaration for the formal arguments of a method.
+#define _CABSL_DECL_ARG(seq) decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type) _CABSL_VAR(seq),
+
+// Generate an argument declaration with initialization for the formal arguments of a method.
+#define _CABSL_DECL_ARG_WITH_INIT(seq) decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type) _CABSL_VAR(seq) _CABSL_INIT(seq),
+
+// Generate a variable name for the list of actual arguments of a method call.
+#define _CABSL_PASS_ARG(seq) _args._CABSL_VAR(seq),
+
+// Directly forward an argument.
+#define _CABSL_PASS_PARAM(seq) _CABSL_VAR(seq),
+
+// Generate an argument declaration for the formal arguments of a method.
+#define _CABSL_DECL_DEF(seq) const decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)& _CABSL_VAR(seq),
+
+// Generate a variable name for the list of actual arguments of a method call.
+#define _CABSL_PASS_DEF(seq) _defs->_CABSL_VAR(seq),
+
+// Generate code for streaming a variable and adding it to the arguments stored in the execution environment.
+#define _CABSL_STREAM_VAR(seq) \
+  _o.addArgument(#seq, _vars->_CABSL_VAR(seq));
+
+// Generate an argument declaration for the formal arguments of a method.
+#define _CABSL_DECL_VAR(seq) decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)& _CABSL_VAR(seq),
+
+// Generate a variable name for the list of actual arguments of a method call.
+#define _CABSL_PASS_VAR(seq) _vars->_CABSL_VAR(seq),
+
+// Does a list contain an "args()" parameter? Empty or "1".
+#define _CABSL_HAS_ARGS(...) _CABSL_HAS_ARGS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_HAS_ARGS_I(n, ...) _CABSL_HAS_ARGS_II(n, (_CABSL_HAS_ARGS_III, __VA_ARGS__))
+#define _CABSL_HAS_ARGS_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_HAS_ARGS_III(entry) _CABSL_JOIN(_CABSL_HAS_ARGS_III_, entry)
+#define _CABSL_HAS_ARGS_III_args(...) 1
+#define _CABSL_HAS_ARGS_III_defs(...)
+#define _CABSL_HAS_ARGS_III_load(...)
+#define _CABSL_HAS_ARGS_III_vars(...)
+
+// Return the contents of the "args()" parameter in a list.
+#define _CABSL_GET_ARGS(...) _CABSL_GET_ARGS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_GET_ARGS_I(n, ...) _CABSL_GET_ARGS_II(n, (_CABSL_GET_ARGS_III, __VA_ARGS__))
+#define _CABSL_GET_ARGS_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_GET_ARGS_III(entry) _CABSL_JOIN(_CABSL_GET_ARGS_III_, entry)
+#define _CABSL_GET_ARGS_III_args(...) __VA_ARGS__
+#define _CABSL_GET_ARGS_III_defs(...)
+#define _CABSL_GET_ARGS_III_load(...)
+#define _CABSL_GET_ARGS_III_vars(...)
+
+// Does a list contain a "defs()" or "load()" parameter? Empty or "1".
+#define _CABSL_HAS_DEFS(...) _CABSL_HAS_DEFS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_HAS_DEFS_I(n, ...) _CABSL_HAS_DEFS_II(n, (_CABSL_HAS_DEFS_III, __VA_ARGS__))
+#define _CABSL_HAS_DEFS_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_HAS_DEFS_III(entry) _CABSL_JOIN(_CABSL_HAS_DEFS_III_, entry)
+#define _CABSL_HAS_DEFS_III_args(...)
+#define _CABSL_HAS_DEFS_III_defs(...) 1
+#define _CABSL_HAS_DEFS_III_load(...) 1
+#define _CABSL_HAS_DEFS_III_vars(...)
+
+// Does a list contain a "load()" parameter? Empty or "1".
+#define _CABSL_HAS_LOAD(...) _CABSL_HAS_LOAD_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_HAS_LOAD_I(n, ...) _CABSL_HAS_LOAD_II(n, (_CABSL_HAS_LOAD_III, __VA_ARGS__))
+#define _CABSL_HAS_LOAD_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_HAS_LOAD_III(entry) _CABSL_JOIN(_CABSL_HAS_LOAD_III_, entry)
+#define _CABSL_HAS_LOAD_III_args(...)
+#define _CABSL_HAS_LOAD_III_defs(...)
+#define _CABSL_HAS_LOAD_III_load(...) 1
+#define _CABSL_HAS_LOAD_III_vars(...)
+
+// Return the contents of the "defs()" or "load()" parameter in a list.
+#define _CABSL_GET_DEFS(...) _CABSL_GET_DEFS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_GET_DEFS_I(n, ...) _CABSL_GET_DEFS_II(n, (_CABSL_GET_DEFS_III, __VA_ARGS__))
+#define _CABSL_GET_DEFS_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_GET_DEFS_III(entry) _CABSL_JOIN(_CABSL_GET_DEFS_III_, entry)
+#define _CABSL_GET_DEFS_III_args(...)
+#define _CABSL_GET_DEFS_III_defs(...) __VA_ARGS__
+#define _CABSL_GET_DEFS_III_load(...) __VA_ARGS__
+#define _CABSL_GET_DEFS_III_vars(...)
+
+// Does a list contain a "vars()" parameter? Empty or "1".
+#define _CABSL_HAS_VARS(...) _CABSL_HAS_VARS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_HAS_VARS_I(n, ...) _CABSL_HAS_VARS_II(n, (_CABSL_HAS_VARS_III, __VA_ARGS__))
+#define _CABSL_HAS_VARS_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_HAS_VARS_III(entry) _CABSL_JOIN(_CABSL_HAS_VARS_III_, entry)
+#define _CABSL_HAS_VARS_III_args(...)
+#define _CABSL_HAS_VARS_III_defs(...)
+#define _CABSL_HAS_VARS_III_load(...)
+#define _CABSL_HAS_VARS_III_vars(...) 1
+
+// Return the contents of the "vars()" parameter in a list.
+#define _CABSL_GET_VARS(...) _CABSL_GET_VARS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
+#define _CABSL_GET_VARS_I(n, ...) _CABSL_GET_VARS_II(n, (_CABSL_GET_VARS_III, __VA_ARGS__))
+#define _CABSL_GET_VARS_II(n, pair, ...) _CABSL_ATTR_##n pair
+#define _CABSL_GET_VARS_III(entry) _CABSL_JOIN(_CABSL_GET_VARS_III_, entry)
+#define _CABSL_GET_VARS_III_args(...)
+#define _CABSL_GET_VARS_III_defs(...)
+#define _CABSL_GET_VARS_III_load(...)
+#define _CABSL_GET_VARS_III_vars(...) __VA_ARGS__
+
+#ifndef __INTELLISENSE__
 
 /**
  * The macro defines an initial state. It must be followed by a block of code that defines the state's body.
@@ -667,7 +1092,7 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 
 /**
  * Executes the first applicable option from a list.
- * @param ... The list of options as a std::vector<std::string>.
+ * @param ... The list of options as a std::vector<OptionInfos::Option>.
  * @return Was an option executed?
  */
 #define select_option(...) OptionInfos::execute(this, __VA_ARGS__)
@@ -677,10 +1102,17 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 #ifndef INTELLISENSE_PREFIX
 #define INTELLISENSE_PREFIX
 #endif
-#define _CABSL_OPTION_0(name) void INTELLISENSE_PREFIX name()
-#define _CABSL_OPTION_III(n, name, ...) _CABSL_OPTION_IV(n, name, (_CABSL_PARAM_WITH_INIT, __VA_ARGS__))
-#define _CABSL_OPTION_IV(n, name, params) \
-  void INTELLISENSE_PREFIX name(_CABSL_ATTR_##n params bool _ignore = false)
+#define _CABSL_OPTION_0_0(name) void INTELLISENSE_PREFIX name(const OptionExecution&)
+#define _CABSL_OPTION_III(n, name, ...) _CABSL_OPTION_IV(n, name, (_CABSL_STRUCT_WITH_INIT, __VA_ARGS__), (_CABSL_ARG_WITH_INIT, __VA_ARGS__))
+#define _CABSL_OPTION_IV(n, name, params1, params2) \
+  struct INTELLISENSE_PREFIX _##name##Args \
+  { \
+    _CABSL_ATTR_##n params1 \
+  }; \
+  void INTELLISENSE_PREFIX name(const _##name##Args& args, const OptionExecution&) {} \
+  void INTELLISENSE_PREFIX _##name(_CABSL_ATTR_##n params2 const OptionExecution&)
+#define _CABSL_IOPTION_IV(n, class, name, params1) \
+  void _CABSL_DECL_I class))::_##name(_CABSL_ATTR_##n params1 const OptionExecution&)
 
 #define initial_state(name) \
   initial_state: \
@@ -707,34 +1139,9 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 
 #endif
 
-/** Define symbol if Microsoft's traditional preprocessor is used. */
-#if defined _MSC_VER && (!defined _MSVC_TRADITIONAL || _MSVC_TRADITIONAL)
-#define _CABSL_MSC
-#endif
-
-/** Check whether an option has parameters. */
-#ifdef _CABSL_MSC
-#define _CABSL_HAS_PARAMS(...) _CABSL_JOIN(_CABSL_TUPLE_SIZE_II, (__VA_ARGS__, _CABSL_HAS_PARAMS_II))
-#else
-#define _CABSL_HAS_PARAMS(...) _CABSL_HAS_PARAMS_I((__VA_ARGS__, _CABSL_HAS_PARAMS_II))
-#define _CABSL_HAS_PARAMS_I(params) _CABSL_TUPLE_SIZE_II params
-#endif
-#define _CABSL_HAS_PARAMS_II \
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0
-
-/**
- * Determine the number of entries in a tuple.
- */
-#if defined _CABSL_MSC && !defined Q_MOC_RUN
-#define _CABSL_TUPLE_SIZE(...) _CABSL_JOIN(_CABSL_TUPLE_SIZE_II, (__VA_ARGS__, _CABSL_TUPLE_SIZE_III))
-#else
+/** Determine the number of entries in a tuple. */
 #define _CABSL_TUPLE_SIZE(...) _CABSL_TUPLE_SIZE_I((__VA_ARGS__, _CABSL_TUPLE_SIZE_III))
 #define _CABSL_TUPLE_SIZE_I(params) _CABSL_TUPLE_SIZE_II params
-#endif
 #define _CABSL_TUPLE_SIZE_II( \
   a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, \
   a21, a22, a23, a24, a25, a26, a27, a28, a29, a30, a31, a32, a33, a34, a35, a36, a37, a38, a39, a40, \
@@ -752,21 +1159,12 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
  * Determine whether a sequence is of the form "(a) b" or "(a)(b) c".
  * In the first case, 1 is returned, otherwise 2.
  */
-#if !defined _CABSL_MSC  || defined __INTELLISENSE__ || defined Q_MOC_RUN
 #define _CABSL_SEQ_SIZE(...) _CABSL_CAT(_CABSL_SEQ_SIZE, _CABSL_SEQ_SIZE_0 __VA_ARGS__))
 #define _CABSL_SEQ_SIZE_0(...) _CABSL_SEQ_SIZE_1
 #define _CABSL_SEQ_SIZE_1(...) _CABSL_SEQ_SIZE_2
 #define _CABSL_SEQ_SIZE_CABSL_SEQ_SIZE_0 0 _CABSL_DROP(
 #define _CABSL_SEQ_SIZE_CABSL_SEQ_SIZE_1 1 _CABSL_DROP(
 #define _CABSL_SEQ_SIZE_CABSL_SEQ_SIZE_2 2 _CABSL_DROP(
-#else
-#define _CABSL_SEQ_SIZE(...) _CABSL_JOIN(_CABSL_SEQ_SIZE, _CABSL_SEQ_SIZE_I(_CABSL_SEQ_SIZE_I(_CABSL_SEQ_SIZE_II(__VA_ARGS__)))))
-#define _CABSL_SEQ_SIZE_I(...) _CABSL_CAT(_CABSL_DROP, __VA_ARGS__)
-#define _CABSL_SEQ_SIZE_II(...) _CABSL_DROP __VA_ARGS__
-#define _CABSL_SEQ_SIZE_CABSL_DROP 2 _CABSL_DROP(
-#define _CABSL_SEQ_SIZE_CABSL_DROP_CABSL_DROP 1 _CABSL_DROP (
-#define _CABSL_SEQ_SIZE_CABSL_DROP_CABSL_DROP_CABSL_DROP 0 _CABSL_DROP (
-#endif
 
 /**
  * Apply a macro to all elements of a tuple.
@@ -846,7 +1244,7 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 #define _CABSL_JOIN_II(res) res
 
 /** Generate the actual declaration. */
-#define _CABSL_DECL_IV(...) _CABSL_VAR(__VA_ARGS__) _CABSL_DROP(_CABSL_DROP(
+#define _CABSL_DECL_I(...) _CABSL_VAR(__VA_ARGS__) _CABSL_DROP(_CABSL_DROP(
 
 /** Extract the variable from the declaration. */
 #define _CABSL_VAR(...) _CABSL_JOIN(_CABSL_VAR_, _CABSL_SEQ_SIZE(__VA_ARGS__))(__VA_ARGS__)
@@ -859,10 +1257,10 @@ template<typename CabslBehavior> template<const void*(descriptor)()> typename Ca
 #define _CABSL_VAR_2_II(...) _CABSL_VAR_2_III
 #define _CABSL_VAR_2_III(...)
 
-/** Generate the initialisation code from the declaration if required. */
+/** Generate the initialization code from the declaration if required. */
 #define _CABSL_INIT(seq) _CABSL_JOIN(_CABSL_INIT_I_, _CABSL_SEQ_SIZE(seq))(seq)
 #define _CABSL_INIT_I_1(...)
-#define _CABSL_INIT_I_2(...) = _CABSL_DECL_IV __VA_ARGS__))(_CABSL_INIT_II __VA_ARGS__) _CABSL_INIT_I_2_I(__VA_ARGS__))
+#define _CABSL_INIT_I_2(...) = _CABSL_DECL_I __VA_ARGS__))(_CABSL_INIT_II __VA_ARGS__) _CABSL_INIT_I_2_I(__VA_ARGS__))
 #define _CABSL_INIT_I_2_I(...) _CABSL_INIT_I_2_II __VA_ARGS__)
 #define _CABSL_INIT_I_2_II(...) _CABSL_INIT_I_2_III
 #define _CABSL_INIT_I_2_III(...) __VA_ARGS__ _CABSL_DROP(

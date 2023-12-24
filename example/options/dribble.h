@@ -14,7 +14,7 @@ option(dribble) {
         goto behind_ball_near_opponent_goal;
     }
     action {
-      set_action(W);
+      set_action({.next_action = W});
     }
   }
 
@@ -23,7 +23,7 @@ option(dribble) {
       goto behind_ball;
     }
     action {
-      set_action(KICK);
+      set_action({.next_action = KICK});
     }
   }
 

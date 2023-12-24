@@ -5,7 +5,7 @@
  * @author Martin Lötzsch
  * @author Thomas Röfer
  */
-option(go_dir, (Action) dir) {
+option(go_dir, args((Action) dir)) {
   common_transition {
     if (local_area[dir] != EMPTY) {
       if (dir == N && local_area[NE] == EMPTY)
@@ -33,42 +33,42 @@ option(go_dir, (Action) dir) {
 
   initial_state(is_empty) {
     action {
-      set_action(dir);
+      set_action({.next_action = dir});
     }
   }
   state(do_nothing) {
     action {
-      set_action(DO_NOTHING);
+      set_action({.next_action = DO_NOTHING});
     }
   }
 
   state(north) {
     action {
-      set_action(N);
+      set_action({.next_action = N});
     }
   }
 
   state(north_east) {
     action {
-      set_action(NE);
+      set_action({.next_action = NE});
     }
   }
 
   state(south_east) {
     action {
-      set_action(SE);
+      set_action({.next_action = SE});
     }
   }
 
   state(south) {
     action {
-      set_action(S);
+      set_action({.next_action = S});
     }
   }
 
   state(east) {
     action {
-      set_action(E);
+      set_action({.next_action = E});
     }
   }
 }

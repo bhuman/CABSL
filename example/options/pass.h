@@ -22,7 +22,7 @@ option(pass) {
         goto get_behind_ball;
     }
     action {
-      set_action(KICK);
+      set_action({.next_action = KICK});
     }
   }
 }

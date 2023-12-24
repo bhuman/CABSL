@@ -5,7 +5,7 @@
  * @author Martin Lötzsch
  * @author Thomas Röfer
  */
-option(go_to, (int) x, (int) y) {
+option(go_to, args((int) x, (int) y)) {
   common_transition {
     x = std::min(78, std::max(1, x));
     y = std::min(21, std::max(1, y));
@@ -40,43 +40,43 @@ option(go_to, (int) x, (int) y) {
 
   initial_state(do_nothing) {
     action {
-      set_action(DO_NOTHING);
+      set_action({.next_action = DO_NOTHING});
     }
   }
 
   state(north_east) {
     action {
-      go_dir(NE);
+      go_dir({.dir = NE});
     }
   }
 
   state(north_west) {
     action {
-      go_dir(NW);
+      go_dir({.dir = NW});
     }
   }
 
   state(south_east) {
     action {
-      go_dir(SE);
+      go_dir({.dir = SE});
     }
   }
 
   state(south_west) {
     action {
-      go_dir(SW);
+      go_dir({.dir = SW});
     }
   }
 
   state(east) {
     action {
-      go_dir(E);
+      go_dir({.dir = E});
     }
   }
 
   state(west) {
     action {
-      go_dir(W);
+      go_dir({.dir = W});
     }
   }
 }
