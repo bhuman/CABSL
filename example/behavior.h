@@ -42,7 +42,7 @@ public:
     NW, N, NE, W, PLAYER, E, SW, S, SE, KICK, DO_NOTHING
   };
 
-private:
+protected:
   int local_area[9]; /**< The local area as passed by ascii soccer. */
   Action ball_direction; /**< The ball direction as passed by ascii soccer. */
   int x; /**< The player's x coordinate as passed by ascii soccer. */
@@ -58,6 +58,7 @@ private:
 
 #include "options.h" // Include all options into the body of this class.
 
+private:
   // The following members are helpers not directly used by the behavior.
   unsigned frame_counter = 0; /**< Frame counter. Is increased in each frame. */
   int player_number; /**< The number of this player [0..3]. */

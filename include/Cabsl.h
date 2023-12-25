@@ -112,6 +112,7 @@
 #pragma once
 
 #include <cassert>
+#include <fstream>
 #include <sstream>
 #include <type_traits>
 #include <unordered_map>
@@ -331,7 +332,7 @@ public:
   {
   private:
     static std::unordered_map<std::string, const OptionDescriptor*>* optionsByName; /**< All argumentless options, indexed by their names. */
-    static std::vector<void (*)()>* modifyHandlers; /**< All modify handlers for options with definitions. */
+    static std::vector<void (*)()>* initHandlers; /**< All initialization handlers for options with definitions. */
 
   public:
     /** The constructor prepares the collection of information if this has not been done yet. */
@@ -345,9 +346,9 @@ public:
     ~OptionInfos()
     {
       delete optionsByName;
-      delete modifyHandlers;
+      delete initHandlers;
       optionsByName = nullptr;
-      modifyHandlers = nullptr;
+      initHandlers = nullptr;
     }
 
     /**
@@ -368,28 +369,27 @@ public:
      * option.
      * This method is only called for options without arguments, because only they
      * can be called externally.
-     * @param fnDescriptor A function that can return the description of an option.
+     * @param descriptor A description of an option.
      */
-    static void add(OptionDescriptor*(*fnDescriptor)())
+    static void add(const OptionDescriptor& descriptor)
     {
       if(!optionsByName)
         init();
 
       assert(optionsByName);
-      OptionDescriptor& descriptor = *fnDescriptor();
       if(optionsByName->find(descriptor.name) == optionsByName->end()) // only register once
         (*optionsByName)[descriptor.name] = &descriptor;
     }
 
     /**
-     * The method registers a handler to modify definitions.
-     * @param modifyHandler The address of the handler.
+     * The method registers a handler to initialize definitions.
+     * @param initHandler The address of the handler.
      */
-    static void add(void (*modifyHandler)())
+    static void add(void (*initHandler)())
     {
-      if(!modifyHandlers)
-        modifyHandlers = new std::vector<void (*)()>;
-      modifyHandlers->push_back(modifyHandler);
+      if(!initHandlers)
+        initHandlers = new std::vector<void (*)()>;
+      initHandlers->push_back(initHandler);
     }
 
     /**
@@ -429,45 +429,49 @@ public:
       return false;
     }
 
-    /** Executes all handlers that allow to modify the definitions. */
-    static void executeModifyHandlers()
+    /** Executes all handlers that initialize the definitions. */
+    static void executeInitHandlers()
     {
-      if(modifyHandlers)
-        for(void (*modifyHandler)() : *modifyHandlers)
-          modifyHandler();
+      if(initHandlers)
+        for(void (*initHandler)() : *initHandlers)
+          initHandler();
     }
   };
 
 protected:
+
   /**
    * A template class for collecting information about an option.
    * @tparam descriptor A function that can return the description of the option.
    */
-  template<const void*(*descriptor)()> class OptionInfo : public OptionContext
+  template<void(*function)()> class RegisterFunction
   {
   private:
-    /** A helper structure to register information about the option. */
+    /** A helper structure to register the function. */
     struct Registrar
     {
-      Registrar() {OptionInfos::add(reinterpret_cast<OptionDescriptor*(*)()>(descriptor));}
+      Registrar() {function();}
     };
     static Registrar registrar; /**< The instance that registers the information about the option through construction. */
 
   public:
     /** A dummy constructor that enforces linkage of the static member. */
-    OptionInfo() {static_cast<void>(&registrar);}
+    RegisterFunction() {static_cast<void>(&registrar);}
   };
+
+  template<void(*function)()> class OptionInfo : public OptionContext, public RegisterFunction<function> {};
 
 private:
   static OptionInfos collectOptions; /**< This global instantiation collects data about all options. */
-  typename OptionContext::StateType stateType; /**< The state type of the last option called. */
-  unsigned lastFrameTime; /**< The timestamp of the last time the behavior was executed. */
-  unsigned char depth; /**< The depth level of the current option. Used for activation graph. */
+  typename OptionContext::StateType stateType = OptionContext::normalState; /**< The state type of the last option called. */
+  unsigned lastFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
+  unsigned char depth = 0; /**< The depth level of the current option. Used for activation graph. */
   ActivationGraph* activationGraph; /**< The activation graph for debug output. Can be zero if not set. */
+  bool definitionsInitialized = false; /**< Were the definitions already initialized? */
 
 protected:
   static thread_local Cabsl* _theInstance; /**< The instance of this behavior used. */
-  unsigned _currentFrameTime; /**< The timestamp of the last time the behavior was executed. */
+  unsigned _currentFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
 
   /**
    * Constructor.
@@ -475,13 +479,21 @@ protected:
    *                        options and states executed in each frame.
    */
   Cabsl(ActivationGraph* activationGraph = nullptr) :
-    stateType(OptionContext::normalState),
-    lastFrameTime(0),
-    depth(0),
-    activationGraph(activationGraph),
-    _currentFrameTime(0)
+    activationGraph(activationGraph)
   {
     static_cast<void>(&collectOptions); // Enforce linking of this global object
+  }
+
+  /**
+   * The method should return the path of a configuration file for a certain option.
+   * The default implementation just appends ".cfg" to the name of the option.
+   * @param option The name of the option.
+   * @return The path to the configuration file for the option. Can either be
+   *         relative to the current directory or absolute.
+   */
+  std::string getFullPath(const std::string& option) const
+  {
+    return option + ".cfg";
   }
 
 public:
@@ -495,7 +507,11 @@ public:
     if(activationGraph)
       activationGraph->graph.clear();
     _theInstance = this;
-    OptionInfos::executeModifyHandlers();
+    if(!definitionsInitialized)
+    {
+      OptionInfos::executeInitHandlers();
+      definitionsInitialized = true;
+    }
   }
 
   /**
@@ -518,9 +534,9 @@ public:
 
 template<typename CabslBehavior> thread_local Cabsl<CabslBehavior>* Cabsl<CabslBehavior>::_theInstance;
 template<typename CabslBehavior> std::unordered_map<std::string, const typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByName;
-template<typename CabslBehavior> std::vector<void (*)()>* Cabsl<CabslBehavior>::OptionInfos::modifyHandlers;
+template<typename CabslBehavior> std::vector<void (*)()>* Cabsl<CabslBehavior>::OptionInfos::initHandlers;
 template<typename CabslBehavior> typename Cabsl<CabslBehavior>::OptionInfos Cabsl<CabslBehavior>::collectOptions;
-template<typename CabslBehavior> template<const void*(descriptor)()> typename Cabsl<CabslBehavior>::template OptionInfo<descriptor>::Registrar Cabsl<CabslBehavior>::OptionInfo<descriptor>::registrar;
+template<typename CabslBehavior> template<void(*function)()> typename Cabsl<CabslBehavior>::template RegisterFunction<function>::Registrar Cabsl<CabslBehavior>::RegisterFunction<function>::registrar;
 
 /**
  * Together with decltype, the following template allows to use any type
@@ -578,22 +594,22 @@ template<typename T> struct CabslTypeWrapper {static T type;};
   _CABSL_DECL_CONTEXT_##hasClass##_##hasArgs(name) \
   _CABSL_STRUCT_ARGS_##hasClass##_##hasArgs(name, __VA_ARGS__) \
   _CABSL_NAMESPACE_BEGIN_##hasClass(class) \
-  _CABSL_STRUCT_DEFS_##hasDefs(name, __VA_ARGS__) \
+  _CABSL_STRUCT_DEFS_##hasDefs##_##hasLoad(name, __VA_ARGS__) \
   _CABSL_STRUCT_VARS_##hasVars(name, __VA_ARGS__) \
   _CABSL_NAMESPACE_END_##hasClass(class) \
-  _CABSL_MODIFY_DEFS_##hasClass##_##hasDefs##_##hasLoad(name, class) \
+  _CABSL_INIT_DEFS_##hasClass##_##hasDefs##_##hasLoad(name, class) \
   _CABSL_FUNS_##hasClass##_##hasArgs##_##hasDefs##_##hasVars(name, class, __VA_ARGS__)
 
 // Declare the option context if executed in the header file (inline).
 // Also generate registration method for the option if it has no arguments.
 #define _CABSL_DECL_CONTEXT__(name) \
-  static const void* _get##name##Descriptor() \
+  static void _##name##DescriptorReg() \
   { \
     static OptionDescriptor descriptor(#name, reinterpret_cast<void (CabslBehavior::*)(const OptionExecution&)>(&CabslBehavior::name), \
                               reinterpret_cast<size_t>(&reinterpret_cast<CabslBehavior*>(16)->_##name##Context) - 16); \
-    return &descriptor; \
+    OptionInfos::add(descriptor); \
   } \
-  OptionInfo<&CabslBehavior::_get##name##Descriptor> _##name##Context;
+  OptionInfo<&CabslBehavior::_##name##DescriptorReg> _##name##Context;
 #define _CABSL_DECL_CONTEXT_1_(name, ...)
 #define _CABSL_DECL_CONTEXT__1(name, ...) \
   OptionContext _##name##Context;
@@ -618,10 +634,31 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 // Generate the declaration and optional initialization of a field in the structure.
 #define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
 
-// Define a structure for definitions. They are streamable, so the STREAMABLE macro is used.
-#define _CABSL_STRUCT_DEFS_(name, ...)
-#define _CABSL_STRUCT_DEFS_1(name, ...) _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__))
-#define _CABSL_STRUCT_DEFS_I(name, ...) STREAMABLE(_##name##Defs, {, __VA_ARGS__, });
+// Define a structure for definitions. If "load" is used, the structure has a function "_read".
+#define _CABSL_STRUCT_DEFS__(name, ...)
+#define _CABSL_STRUCT_DEFS_1_(name, ...) \
+  struct _##name##Defs : public CabslStructBase \
+  { \
+    _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
+  };
+#define _CABSL_STRUCT_DEFS_1_1(name, ...) \
+  struct _##name##Defs : public CabslStructBase \
+  { \
+    _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
+    void _read(std::istream& _stream) \
+    { \
+      _CABSL_READ_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
+    } \
+  };
+#define _CABSL_STRUCT_DEFS_I(name, ...) _CABSL_STRUCT_DEFS_II(name, _CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
+#define _CABSL_STRUCT_DEFS_II(name, n, ...) _CABSL_STRUCT_DEFS_III(name, n, (_CABSL_STRUCT_WITH_INIT, __VA_ARGS__))
+#define _CABSL_STRUCT_DEFS_III(name, n, pair) _CABSL_ATTR_##n pair
+#define _CABSL_READ_DEFS_I(name, ...) _CABSL_READ_DEFS_II(name, _CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
+#define _CABSL_READ_DEFS_II(name, n, ...) _CABSL_READ_DEFS_III(name, n, (_CABSL_READ_DEF, __VA_ARGS__))
+#define _CABSL_READ_DEFS_III(name, n, pair) _CABSL_ATTR_##n pair
+
+// Generate the declaration and optional initialization of a field in the structure.
+#define _CABSL_READ_DEF(seq) _stream >> _CABSL_VAR(seq);
 
 // Define a structure that contains variables.
 // The structure is only defined if it is needed (addition "1" of the name).
@@ -638,19 +675,19 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 // Generate the declaration of a field in the structure.
 #define _CABSL_STRUCT_WITHOUT_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq);
 
-// Define a modify handler and a function that registers it.
+// Define a initialization handler and a function that registers it.
 // It is distinguished whether a class was specified (implementation file) or not (header) and
 // whether there actually are definitions.
-#define _CABSL_MODIFY_DEFS___(name, class) \
-  static void _##name##Modify(); \
-  static void _##name##ModifyReg();
-#define _CABSL_MODIFY_DEFS_1__(name, class)
-#define _CABSL_MODIFY_DEFS__1_(name, class) _CABSL_MODIFY_DEFS_I(name, , static, )
-#define _CABSL_MODIFY_DEFS__1_1(name, class) _CABSL_MODIFY_DEFS_I(name, , static, InMapFile _stream("option" #name ".cfg"); ASSERT(_stream.exists()); _stream >> *_defs;)
-#define _CABSL_MODIFY_DEFS_1_1_(name, class) _CABSL_MODIFY_DEFS_I(name, class::, , )
-#define _CABSL_MODIFY_DEFS_1_1_1(name, class) _CABSL_MODIFY_DEFS_I(name, class::, , InMapFile _stream("option" #name ".cfg"); ASSERT(_stream.exists()); _stream >> *_defs;)
-#define _CABSL_MODIFY_DEFS_I(name, class, prefix, load) \
-  prefix void class _##name##Modify() \
+#define _CABSL_INIT_DEFS___(name, class) \
+  static void _##name##Init(); \
+  static void _##name##InitReg();
+#define _CABSL_INIT_DEFS_1__(name, class)
+#define _CABSL_INIT_DEFS__1_(name, class) _CABSL_INIT_DEFS_I(name, , static, )
+#define _CABSL_INIT_DEFS__1_1(name, class) _CABSL_INIT_DEFS_I(name, , static, std::ifstream _stream(static_cast<CabslBehavior*>(_theInstance)->getFullPath(#name)); assert(_stream.is_open()); _defs->_read(_stream); _stream.close();)
+#define _CABSL_INIT_DEFS_1_1_(name, class) _CABSL_INIT_DEFS_I(name, class::, , )
+#define _CABSL_INIT_DEFS_1_1_1(name, class) _CABSL_INIT_DEFS_I(name, class::, , std::ifstream _stream(static_cast<CabslBehavior*>(_theInstance)->getFullPath(#name)); assert(_stream.is_open()); _defs->_read(_stream); _stream.close();)
+#define _CABSL_INIT_DEFS_I(name, class, prefix, load) \
+  prefix void class _##name##Init() \
   { \
     _##name##Defs*& _defs = reinterpret_cast<_##name##Defs*&>(static_cast<CabslBehavior*>(_theInstance)->_##name##Context.defs); \
     if(!_defs) \
@@ -658,12 +695,10 @@ template<typename T> struct CabslTypeWrapper {static T type;};
       _defs = new _##name##Defs(); \
       load \
     } \
-    MODIFY("option:" #name, *_defs); \
   } \
-  prefix void class _##name##ModifyReg() \
+  prefix void class _##name##InitReg() \
   { \
-    PUBLISH(_##name##ModifyReg); \
-    OptionInfos::add(&CabslBehavior::_##name##Modify); \
+    OptionInfos::add(&CabslBehavior::_##name##Init); \
   }
 
 // Generate start of namespace if used in implementation file.
@@ -887,6 +922,7 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 
 // Implementation for definitions.
 #define _CABSL_DEFS_IMPL(name) \
+  static RegisterFunction<&CabslBehavior::_##name##InitReg> _regInit; \
   _##name##Defs* _defs = reinterpret_cast<_##name##Defs*>(_o.context.defs);
 
 // Implementation for option variables. If they do not exist yet, they are allocated.

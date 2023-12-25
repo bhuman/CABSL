@@ -3,14 +3,15 @@
  *
  * @author Martin Lötzsch
  */
-option(dribble) {
+option(dribble,
+       defs((int)(13) near_goal)) {
   initial_state(behind_ball) {
     transition {
       /** not behind ball */
       if (ball_local_direction != W)
         goto not_behind_ball;
       /** near opponent goal */
-      else if (x < 13)
+      else if (x < near_goal)
         goto behind_ball_near_opponent_goal;
     }
     action {

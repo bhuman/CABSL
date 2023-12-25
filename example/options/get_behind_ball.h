@@ -5,10 +5,11 @@
  * @author Martin Lötzsch
  * @author Thomas Röfer
  */
-option(get_behind_ball) {
+option(get_behind_ball,
+       defs((int)(11) half_width)) {
   common_transition {
     if (ball_local_direction == E) {
-      if (y < 11)
+      if (y < half_width)
         goto south_east;
       else
         goto north_east;

@@ -5,16 +5,17 @@
  * @author Martin Lötzsch
  * @author Thomas Röfer
  */
-option(go_dir, args((Action) dir)) {
+option(go_dir, args((Action) dir),
+               defs((int)(11) half_width)) {
   common_transition {
     if (local_area[dir] != EMPTY) {
       if (dir == N && local_area[NE] == EMPTY)
         goto north_east;
       else if (dir == NE && local_area[E] == EMPTY)
         goto east;
-      else if (dir == E && y < 11 && local_area[SE] == EMPTY)
+      else if (dir == E && y < half_width && local_area[SE] == EMPTY)
         goto south_east;
-      else if (dir == E && y >= 11 && local_area[NE] == EMPTY)
+      else if (dir == E && y >= half_width && local_area[NE] == EMPTY)
         goto south_east;
       else if (dir == SE && local_area[E] == EMPTY)
         goto east;

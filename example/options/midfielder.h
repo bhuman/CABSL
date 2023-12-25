@@ -3,13 +3,15 @@
  *
  * @author Martin Lötzsch
  */
-option(midfielder) {
+option(midfielder,
+       defs((int)(3) close_ball_distance,
+            (int)(2) pass_threshold)) {
   initial_state(get_to_ball) {
     transition {
       /** close to ball */
-      if (ball_distance <= 3) {
+      if (ball_distance <= close_ball_distance) {
         /** no teammate to the west */
-        if (most_westerly_teammate_x > ball_x + 2)
+        if (most_westerly_teammate_x > ball_x + pass_threshold)
           goto dribble;
         else
           goto pass;
@@ -23,7 +25,7 @@ option(midfielder) {
   state(pass) {
     transition {
       /** far from ball */
-      if (ball_distance > 3)
+      if (ball_distance > close_ball_distance)
         goto get_to_ball;
     }
     action {
@@ -34,7 +36,7 @@ option(midfielder) {
   state(dribble) {
     transition {
       /** far from ball */
-      if (ball_distance > 3)
+      if (ball_distance > close_ball_distance)
         goto get_to_ball;
     }
     action {

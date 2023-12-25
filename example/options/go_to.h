@@ -5,13 +5,16 @@
  * @author Martin Lötzsch
  * @author Thomas Röfer
  */
-option(go_to, args((int) x, (int) y)) {
+option(go_to, args((int) x, (int) y),
+              defs((int)(78) length,
+                   (int)(21) width,
+                   (int)((width + 1) / 2) half_width)) {
   common_transition {
-    x = std::min(78, std::max(1, x));
-    y = std::min(21, std::max(1, y));
+    x = std::min(length, std::max(1, x));
+    y = std::min(width, std::max(1, y));
 
     if (x < ball_x && y == ball_y)
-      y += y < 11 ? 1 : -1;
+      y += y < half_width ? 1 : -1;
 
     int dx = x - this->x;
     int dy = y - this->y;
