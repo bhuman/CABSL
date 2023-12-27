@@ -62,8 +62,10 @@
  * - Arguments (args) that can be passed to the option.
  * - Definitions (defs, load) define constant parameters of the option, i.e.
  *   usually values the implementation depends upon. If "load" is used
- *   instead of "defs", their values are loaded from a configuration file with
- *   the name "option<option name>.cfg".
+ *   instead of "defs", their values are loaded from a configuration file. The
+ *   name of the file depends on the implementation of the stream used to
+ *   read these files. Look at the description of "InFileStream.h" for a
+ *   description of the default implementation.
  * - Variables (vars) define option-local variables. They keep their
  *   values from each call of the option to the next call. However, they
  *   are (re-)initialized with their default values if the option was not
@@ -112,494 +114,441 @@
 #pragma once
 
 #include <cassert>
-#include <fstream>
 #include <sstream>
 #include <type_traits>
 #include <unordered_map>
 #include "ActivationGraph.h"
+#include "InFileStream.h"
 
 /** Reject Microsoft's traditional preprocessor. */
 #if defined _MSC_VER && (!defined _MSVC_TRADITIONAL || _MSVC_TRADITIONAL)
 #error "This code requires the standard preprocessor (/Zc:preprocessor)."
 #endif
 
-/**
- * Base class for helper structures that makes sure that the
- * destructor is virtual.
- */
-struct CabslStructBase
+namespace cabsl
 {
-  virtual ~CabslStructBase() = default;
-};
-
-/** Helper class for reading configuration files of options. */
-class CabslInFileStream
-{
-  std::ifstream stream; /**< The stream to read from. */
-
   /**
-   * Expect a certain string in the input. If the string is not present,
-   * the operation fails with an exception.
-   * @param pattern The string.
+   * Base class for helper structures that makes sure that the
+   * destructor is virtual.
    */
-  void expect(const char* pattern)
+  struct StructBase
   {
-    char c;
-    while(isspace(static_cast<unsigned char>(stream.peek())) && *pattern != stream.peek())
-      stream.get(c);
-    while(*pattern && stream && *pattern == stream.peek())
-    {
-      stream.get(c);
-      ++pattern;
-    }
-    if(*pattern)
-      stream.setstate(std::ios::failbit);
-  }
-
-public:
-  /**
-   * Open a file for reading. If opening fails, an exception is thrown.
-   * @param filename The basename of the file. This implementation appends
-   * ".cfg" to the basename and then opens the file.
-   */
-  CabslInFileStream(const std::string& filename)
-  {
-    stream.exceptions(std::ios::failbit | std::ios::badbit);
-    stream.open(filename + ".cfg");
-  }
-
-  /**
-   * Read a name/value pair. They are separated by a colon. The value must
-   * be followed by a newline, even in the last line of the file.
-   * An exception is thrown if reading fails.
-   * @tparam U The type of the value. An operator >> must exist to read a
-   * value of this type.
-   * @param name The name that is expected. CABSL will actually pass a
-   * longer string, where the name is just the suffix. Everything up to the
-   * last space or closing parenthesis is skipped.
-   * @param value The variable the read value is written to.
-   */
-  template<typename U> void read(const char* name, U& value)
-  {
-    name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
-    expect(name);
-    expect(":");
-    stream >> value;
-    expect("\n");
-  }
-};
-
-/**
- * The base class for CABSL behaviors.
- * Note: Private variables that cannot be declared as private start with an
- * underscore.
- * @tparam CabslBehavior_ The class that implements the behavior. It must also be
- * derived from this class.
- * @tparam OutStringStream_ A class with an interface compatible to std::stringstream.
- * Instances of the class are used to add arguments and variables to the activation
- * graph.
- * @tparam InFileStream_ A class with an interface compatible to CabslInFileStream. It
- * is used to load definitions from configuration files.
- */
-template<typename CabslBehavior_, typename InFileStream_ = CabslInFileStream, typename OutStringStream_ = std::stringstream> class Cabsl
-{
-public:
-  using InFileStream = InFileStream_; /**< This type allows to access the stream class by name. */
-
-protected:
-  using CabslBehavior = CabslBehavior_; /**< This type allows to access the derived class by name. */
-  using OutStringStream = OutStringStream_; /**< This type allows to access the stream class by name. */
-
-  /**
-   * The context stores the current state of an option.
-   */
-  class OptionContext
-  {
-  public:
-    /** The different types of states (for implementing initial_state, target_state, and aborted_state). */
-    enum StateType
-    {
-      normalState,
-      initialState,
-      targetState,
-      abortedState
-    };
-
-    int state; /**< The state currently selected. This is actually the line number in which the state was declared. */
-    const char* stateName; /**< The name of the state (for activation graph). */
-    unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (except for the initial state when called from \c select_option). */
-    unsigned lastSelectFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (in any case). */
-    unsigned optionStart; /**< The time when the option started to run (for option_time). */
-    unsigned stateStart; /**< The time when the current state started to run (for state_time). */
-    StateType stateType; /**< The type of the current state in this option. */
-    StateType subOptionStateType; /**< The type of the state of the last suboption executed (for action_done and action_aborted). */
-    bool addedToGraph; /**< Was this option already added to the activation graph in this frame? */
-    bool transitionExecuted; /**< Has a transition already been executed? True after a state change. */
-    bool hasCommonTransition; /**< Does this option have a common transition? Is reset when entering the first state. */
-    CabslStructBase* defs = nullptr; /**< Option configuration definitions. */
-    CabslStructBase* vars = nullptr; /**< Option variables. */
-
-    /** Destructor. */
-    ~OptionContext()
-    {
-      delete defs;
-      delete vars;
-    }
+    virtual ~StructBase() = default;
   };
 
   /**
-   * Instances of this class are passed as a default argument to each option.
-   * They maintain the current state of the option.
+   * The base class for CABSL behaviors.
+   * Note: Private variables that cannot be declared as private start with an
+   * underscore.
+   * @tparam CabslBehavior_ The class that implements the behavior. It must also be
+   * derived from this class.
+   * @tparam InFileStream_ A class with an interface compatible to cabsl::InFileStream. It
+   * is used to load definitions from configuration files.
+   * @tparam OutStringStream_ A class with an interface compatible to std::stringstream.
+   * Instances of the class are used to add arguments and variables to the activation
+   * graph.
    */
-  class OptionExecution
+  template<typename CabslBehavior_, typename InFileStream_ = InFileStream, typename OutStringStream_ = std::stringstream>
+    class Cabsl
   {
-  private:
-    /** Helper to determine, whether A is streamable. */
-    template<typename U> struct isStreamableBase
-    {
-      template<typename V> static auto test(V*) -> decltype(std::declval<OutStringStream&>() << std::declval<V>());
-      template<typename> static auto test(...) -> std::false_type;
-      using type = typename std::negation<typename std::is_same<std::false_type, decltype(test<U>(nullptr))>::type>::type;
-    };
-    template<typename U> struct isStreamable : isStreamableBase<U>::type {};
-
-    const char* optionName; /**< The name of the option (for activation graph). */
-    Cabsl* instance; /**< The object that encapsulates the behavior. */
-    bool fromSelect; /**< Option is called from 'select_option'. */
-    mutable std::vector<std::string> arguments; /**< Argument names and their values. */
-
   public:
-    OptionContext& context; /**< The context of the state. */
+    using InFileStream = InFileStream_; /**< This type allows to access the stream class by name. */
+
+  protected:
+    using CabslBehavior = CabslBehavior_; /**< This type allows to access the derived class by name. */
+    using OutStringStream = OutStringStream_; /**< This type allows to access the stream class by name. */
 
     /**
-     * The constructor checks, whether the option was active in the previous frame and
-     * if not, it switches back to the initial state.
-     * @param optionName The name of the option (for activation graph).
-     * @param context The context of the state.
-     * @param instance The object that encapsulates the behavior.
+     * The context stores the current state of an option.
      */
-    OptionExecution(const char* optionName, OptionContext& context, Cabsl* instance, bool fromSelect = false) :
+    class OptionContext
+    {
+    public:
+      /** The different types of states (for implementing initial_state, target_state, and aborted_state). */
+      enum StateType
+      {
+        normalState,
+        initialState,
+        targetState,
+        abortedState
+      };
+
+      int state; /**< The state currently selected. This is actually the line number in which the state was declared. */
+      const char* stateName; /**< The name of the state (for activation graph). */
+      unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (except for the initial state when called from \c select_option). */
+      unsigned lastSelectFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (in any case). */
+      unsigned optionStart; /**< The time when the option started to run (for option_time). */
+      unsigned stateStart; /**< The time when the current state started to run (for state_time). */
+      StateType stateType; /**< The type of the current state in this option. */
+      StateType subOptionStateType; /**< The type of the state of the last suboption executed (for action_done and action_aborted). */
+      bool addedToGraph; /**< Was this option already added to the activation graph in this frame? */
+      bool transitionExecuted; /**< Has a transition already been executed? True after a state change. */
+      bool hasCommonTransition; /**< Does this option have a common transition? Is reset when entering the first state. */
+      StructBase* defs = nullptr; /**< Option configuration definitions. */
+      StructBase* vars = nullptr; /**< Option variables. */
+
+      /** Destructor. */
+      ~OptionContext()
+      {
+        delete defs;
+        delete vars;
+      }
+    };
+
+    /**
+     * Instances of this class are passed as a default argument to each option.
+     * They maintain the current state of the option.
+     */
+    class OptionExecution
+    {
+    private:
+      /** Helper to determine, whether A is streamable. */
+      template<typename U> struct isStreamableBase
+      {
+        template<typename V> static auto test(V*) -> decltype(std::declval<OutStringStream&>() << std::declval<V>());
+        template<typename> static auto test(...) -> std::false_type;
+        using type = typename std::negation<typename std::is_same<std::false_type, decltype(test<U>(nullptr))>::type>::type;
+      };
+      template<typename U> struct isStreamable : isStreamableBase<U>::type {};
+
+      const char* optionName; /**< The name of the option (for activation graph). */
+      Cabsl* instance; /**< The object that encapsulates the behavior. */
+      bool fromSelect; /**< Option is called from 'select_option'. */
+      mutable std::vector<std::string> arguments; /**< Argument names and their values. */
+
+    public:
+      OptionContext& context; /**< The context of the state. */
+
+      /**
+       * The constructor checks, whether the option was active in the previous frame and
+       * if not, it switches back to the initial state.
+       * @param optionName The name of the option (for activation graph).
+       * @param context The context of the state.
+       * @param instance The object that encapsulates the behavior.
+       */
+      OptionExecution(const char* optionName, OptionContext& context, Cabsl* instance, bool fromSelect = false) :
       optionName(optionName), instance(instance), fromSelect(fromSelect), context(context)
-    {
-      if(context.lastFrame != instance->lastFrameTime && context.lastFrame != instance->_currentFrameTime)
       {
-        context.optionStart = instance->_currentFrameTime; // option started now
-        context.stateStart = instance->_currentFrameTime; // initial state started now
-        context.state = 0; // initial state is always marked with a 0
-        context.stateType = OptionContext::initialState;
+        if(context.lastFrame != instance->lastFrameTime && context.lastFrame != instance->_currentFrameTime)
+        {
+          context.optionStart = instance->_currentFrameTime; // option started now
+          context.stateStart = instance->_currentFrameTime; // initial state started now
+          context.state = 0; // initial state is always marked with a 0
+          context.stateType = OptionContext::initialState;
+        }
+        if(context.lastSelectFrame != instance->lastFrameTime && context.lastSelectFrame != instance->_currentFrameTime)
+          context.subOptionStateType = OptionContext::normalState; // reset action_done and action_aborted
+        context.addedToGraph = false; // not added to graph yet
+        context.transitionExecuted = false; // no transition executed yet
+        context.hasCommonTransition = false; // until one is found, it is assumed that there is no common transition
+        ++instance->depth; // increase depth counter for activation graph
       }
-      if(context.lastSelectFrame != instance->lastFrameTime && context.lastSelectFrame != instance->_currentFrameTime)
-        context.subOptionStateType = OptionContext::normalState; // reset action_done and action_aborted
-      context.addedToGraph = false; // not added to graph yet
-      context.transitionExecuted = false; // no transition executed yet
-      context.hasCommonTransition = false; // until one is found, it is assumed that there is no common transition
-      ++instance->depth; // increase depth counter for activation graph
-    }
+
+      /**
+       * The destructor cleans up the option context.
+       */
+      ~OptionExecution()
+      {
+        if(!fromSelect || context.stateType != OptionContext::initialState)
+        {
+          addToActivationGraph(); // add to activation graph if it has not been already
+          context.lastFrame = instance->_currentFrameTime; // Remember that this option was called in this frame
+        }
+        context.lastSelectFrame = instance->_currentFrameTime; // Remember that this option was called in this frame (even in select_option/initial)
+        --instance->depth; // decrease depth counter for activation graph
+        context.subOptionStateType = instance->stateType; // remember the state type of the last sub option called
+        instance->stateType = context.stateType; // publish the state type of this option, so the caller can grab it
+      }
+
+      /**
+       * The method is executed whenever the state is changed.
+       * @param newState The new state to which it was changed.
+       * @param stateType The type of the new state.
+       */
+      void updateState(int newState, typename OptionContext::StateType stateType) const
+      {
+        assert(context.hasCommonTransition != context.transitionExecuted); // [common_]transition is missing
+        context.transitionExecuted = true; // a transition was executed, do not execute another one
+        if(context.state != newState) // ignore transitions that stay in the same state
+        {
+          context.state = newState;
+          context.stateStart = instance->_currentFrameTime; // state started now
+          context.stateType = stateType; // remember type of this state
+        }
+      }
+
+      /**
+       * Adds a string description containing the current value of an argument to the list of arguments.
+       * The description is only added if the argument is streamable.
+       * @tparam U The type of the argument.
+       * @param value The current value of the argument.
+       */
+      template<typename U> std::enable_if<isStreamable<U>::value>::type addArgument(const char* name, const U& value) const
+      {
+        name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
+        OutStringStream stream;
+        stream << value;
+        const std::string text = stream.str();
+        if(!text.empty())
+          arguments.emplace_back(name + (" = " + text));
+      }
+
+      /** Does not write the argument to a stream, because it is not streamable. */
+      template<typename U> typename std::enable_if<!isStreamable<U>::value>::type addArgument(const char*, const U&) const {}
+
+      /**
+       * The method adds information about the current option and state to the activation graph.
+       * It suppresses adding it twice in the same frame.
+       */
+      void addToActivationGraph() const
+      {
+        if(!context.addedToGraph && instance->activationGraph)
+        {
+          instance->activationGraph->graph.emplace_back(optionName, instance->depth,
+                                                        context.stateName,
+                                                        instance->_currentFrameTime - context.optionStart,
+                                                        instance->_currentFrameTime - context.stateStart,
+                                                        arguments);
+          context.addedToGraph = true;
+        }
+      }
+    };
+
+    /** A class to store information about an option. */
+    struct OptionDescriptor
+    {
+      const char* name; /**< The name of the option. */
+      void (CabslBehavior::*option)(const OptionExecution&); /**< The option method. */
+      size_t offsetOfContext; /**< The memory offset of the context within the behavior class. */
+      int index; /**< The index of the option (for the enum of all options). */
+
+      /** Default constructor, because STL types need one. */
+      OptionDescriptor() = default;
+
+      /**
+       * Constructor.
+       * @param name The name of the option.
+       * @param option The option method.
+       * @param offsetOfContext The memory offset of the context within the behavior class.
+       */
+      OptionDescriptor(const char* name, void (CabslBehavior::*option)(const OptionExecution&), size_t offsetOfContext) :
+      name(name), option(option), offsetOfContext(offsetOfContext), index(0)
+      {}
+    };
+
+  public:
+    /** A class that collects information about all options in the behavior. */
+    class OptionInfos
+    {
+    private:
+      static std::unordered_map<std::string, const OptionDescriptor*>* optionsByName; /**< All argumentless options, indexed by their names. */
+      static std::vector<void (*)()>* initHandlers; /**< All initialization handlers for options with definitions. */
+
+    public:
+      /** The constructor prepares the collection of information if this has not been done yet. */
+      OptionInfos()
+      {
+        if(!optionsByName)
+          init();
+      }
+
+      /** The destructor frees the global object. */
+      ~OptionInfos()
+      {
+        delete optionsByName;
+        delete initHandlers;
+        optionsByName = nullptr;
+        initHandlers = nullptr;
+      }
+
+      /**
+       * The method prepares the collection of information about all options in optionByIndex
+       * and optionsByName. It also adds a dummy option descriptor at index 0 with the name "none".
+       */
+      static void init()
+      {
+        assert(!optionsByName);
+        optionsByName = new std::unordered_map<std::string, const OptionDescriptor*>;
+        static OptionDescriptor descriptor("none", 0, 0);
+        (*optionsByName)[descriptor.name] = &descriptor;
+      }
+
+      /**
+       * The method adds information about an option to the collections.
+       * It will be called from the constructors of static objects created for each
+       * option.
+       * This method is only called for options without arguments, because only they
+       * can be called externally.
+       * @param descriptor A description of an option.
+       */
+      static void add(const OptionDescriptor& descriptor)
+      {
+        if(!optionsByName)
+          init();
+
+        assert(optionsByName);
+        if(optionsByName->find(descriptor.name) == optionsByName->end()) // only register once
+          (*optionsByName)[descriptor.name] = &descriptor;
+      }
+
+      /**
+       * The method registers a handler to initialize definitions.
+       * @param initHandler The address of the handler.
+       */
+      static void add(void (*initHandler)())
+      {
+        if(!initHandlers)
+          initHandlers = new std::vector<void (*)()>;
+        initHandlers->push_back(initHandler);
+      }
+
+      /**
+       * The method executes a certain option. Note that only argumentless options can be
+       * executed.
+       * @param behavior The behavior instance.
+       * @param option The name of the option.
+       * @param fromSelect Was this method called fron "select_option"?
+       * @return Was the option actually executed?
+       */
+      static bool execute(CabslBehavior* behavior, const std::string& option, bool fromSelect = false)
+      {
+        auto pair = optionsByName->find(option);
+        if(pair != optionsByName->end())
+        {
+          const OptionDescriptor& descriptor = *pair->second;
+          OptionContext& context = *reinterpret_cast<OptionContext*>(reinterpret_cast<char*>(behavior) + descriptor.offsetOfContext);
+          (behavior->*(descriptor.option))(OptionExecution(descriptor.name, context, behavior, fromSelect));
+          return context.stateType != OptionContext::initialState;
+        }
+        else
+          return false;
+      }
+
+      /**
+       * The method executes a list of options. It stops after the first option that reports that
+       * it was actually executed.
+       * @param behavior The behavior instance.
+       * @param options The list of option names. The options are executed in that order.
+       * @return Was an option actually executed?
+       */
+      static bool execute(CabslBehavior* behavior, const std::vector<std::string>& options)
+      {
+        for(const std::string& option : options)
+          if(execute(behavior, option, true))
+            return true;
+        return false;
+      }
+
+      /** Executes all handlers that initialize the definitions. */
+      static void executeInitHandlers()
+      {
+        if(initHandlers)
+          for(void (*initHandler)() : *initHandlers)
+            initHandler();
+      }
+    };
+
+  protected:
 
     /**
-     * The destructor cleans up the option context.
+     * A template class for collecting information about an option.
+     * @tparam descriptor A function that can return the description of the option.
      */
-    ~OptionExecution()
+    template<void(*function)()> class RegisterFunction
     {
-      if(!fromSelect || context.stateType != OptionContext::initialState)
+    private:
+      /** A helper structure to register the function. */
+      struct Registrar
       {
-        addToActivationGraph(); // add to activation graph if it has not been already
-        context.lastFrame = instance->_currentFrameTime; // Remember that this option was called in this frame
-      }
-      context.lastSelectFrame = instance->_currentFrameTime; // Remember that this option was called in this frame (even in select_option/initial)
-      --instance->depth; // decrease depth counter for activation graph
-      context.subOptionStateType = instance->stateType; // remember the state type of the last sub option called
-      instance->stateType = context.stateType; // publish the state type of this option, so the caller can grab it
-    }
+        Registrar() {function();}
+      };
+      static Registrar registrar; /**< The instance that registers the information about the option through construction. */
 
-    /**
-     * The method is executed whenever the state is changed.
-     * @param newState The new state to which it was changed.
-     * @param stateType The type of the new state.
-     */
-    void updateState(int newState, typename OptionContext::StateType stateType) const
-    {
-      assert(context.hasCommonTransition != context.transitionExecuted); // [common_]transition is missing
-      context.transitionExecuted = true; // a transition was executed, do not execute another one
-      if(context.state != newState) // ignore transitions that stay in the same state
-      {
-        context.state = newState;
-        context.stateStart = instance->_currentFrameTime; // state started now
-        context.stateType = stateType; // remember type of this state
-      }
-    }
+    public:
+      /** A dummy constructor that enforces linkage of the static member. */
+      RegisterFunction() {static_cast<void>(&registrar);}
+    };
 
-    /**
-     * Adds a string description containing the current value of an argument to the list of arguments.
-     * The description is only added if the argument is streamable.
-     * @tparam U The type of the argument.
-     * @param value The current value of the argument.
-     */
-    template<typename U> std::enable_if<isStreamable<U>::value>::type addArgument(const char* name, const U& value) const
-    {
-      name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
-      OutStringStream stream;
-      stream << value;
-      const std::string text = stream.str();
-      if(!text.empty())
-        arguments.emplace_back(name + (" = " + text));
-    }
+    template<void(*function)()> class OptionInfo : public OptionContext, public RegisterFunction<function> {};
 
-    /** Does not write the argument to a stream, because it is not streamable. */
-    template<typename U> typename std::enable_if<!isStreamable<U>::value>::type addArgument(const char*, const U&) const {}
+  private:
+    static OptionInfos collectOptions; /**< This global instantiation collects data about all options. */
+    typename OptionContext::StateType stateType = OptionContext::normalState; /**< The state type of the last option called. */
+    unsigned lastFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
+    unsigned char depth = 0; /**< The depth level of the current option. Used for activation graph. */
+    ActivationGraph* activationGraph; /**< The activation graph for debug output. Can be zero if not set. */
+    bool definitionsInitialized = false; /**< Were the definitions already initialized? */
 
-    /**
-     * The method adds information about the current option and state to the activation graph.
-     * It suppresses adding it twice in the same frame.
-     */
-    void addToActivationGraph() const
-    {
-      if(!context.addedToGraph && instance->activationGraph)
-      {
-        instance->activationGraph->graph.emplace_back(optionName, instance->depth,
-                                                      context.stateName,
-                                                      instance->_currentFrameTime - context.optionStart,
-                                                      instance->_currentFrameTime - context.stateStart,
-                                                      arguments);
-        context.addedToGraph = true;
-      }
-    }
-  };
-
-  /** A class to store information about an option. */
-  struct OptionDescriptor
-  {
-    const char* name; /**< The name of the option. */
-    void (CabslBehavior::*option)(const OptionExecution&); /**< The option method. */
-    size_t offsetOfContext; /**< The memory offset of the context within the behavior class. */
-    int index; /**< The index of the option (for the enum of all options). */
-
-    /** Default constructor, because STL types need one. */
-    OptionDescriptor() = default;
+  protected:
+    static thread_local Cabsl* _theInstance; /**< The instance of this behavior used. */
+    unsigned _currentFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
 
     /**
      * Constructor.
-     * @param name The name of the option.
-     * @param option The option method.
-     * @param offsetOfContext The memory offset of the context within the behavior class.
+     * @param activationGraph When set, the activation graph will be filled with the
+     *                        options and states executed in each frame.
      */
-    OptionDescriptor(const char* name, void (CabslBehavior::*option)(const OptionExecution&), size_t offsetOfContext) :
-      name(name), option(option), offsetOfContext(offsetOfContext), index(0)
-    {}
-  };
-
-public:
-  /** A class that collects information about all options in the behavior. */
-  class OptionInfos
-  {
-  private:
-    static std::unordered_map<std::string, const OptionDescriptor*>* optionsByName; /**< All argumentless options, indexed by their names. */
-    static std::vector<void (*)()>* initHandlers; /**< All initialization handlers for options with definitions. */
-
-  public:
-    /** The constructor prepares the collection of information if this has not been done yet. */
-    OptionInfos()
-    {
-      if(!optionsByName)
-        init();
-    }
-
-    /** The destructor frees the global object. */
-    ~OptionInfos()
-    {
-      delete optionsByName;
-      delete initHandlers;
-      optionsByName = nullptr;
-      initHandlers = nullptr;
-    }
-
-    /**
-     * The method prepares the collection of information about all options in optionByIndex
-     * and optionsByName. It also adds a dummy option descriptor at index 0 with the name "none".
-     */
-    static void init()
-    {
-      assert(!optionsByName);
-      optionsByName = new std::unordered_map<std::string, const OptionDescriptor*>;
-      static OptionDescriptor descriptor("none", 0, 0);
-      (*optionsByName)[descriptor.name] = &descriptor;
-    }
-
-    /**
-     * The method adds information about an option to the collections.
-     * It will be called from the constructors of static objects created for each
-     * option.
-     * This method is only called for options without arguments, because only they
-     * can be called externally.
-     * @param descriptor A description of an option.
-     */
-    static void add(const OptionDescriptor& descriptor)
-    {
-      if(!optionsByName)
-        init();
-
-      assert(optionsByName);
-      if(optionsByName->find(descriptor.name) == optionsByName->end()) // only register once
-        (*optionsByName)[descriptor.name] = &descriptor;
-    }
-
-    /**
-     * The method registers a handler to initialize definitions.
-     * @param initHandler The address of the handler.
-     */
-    static void add(void (*initHandler)())
-    {
-      if(!initHandlers)
-        initHandlers = new std::vector<void (*)()>;
-      initHandlers->push_back(initHandler);
-    }
-
-    /**
-     * The method executes a certain option. Note that only argumentless options can be
-     * executed.
-     * @param behavior The behavior instance.
-     * @param option The name of the option.
-     * @param fromSelect Was this method called fron "select_option"?
-     * @return Was the option actually executed?
-     */
-    static bool execute(CabslBehavior* behavior, const std::string& option, bool fromSelect = false)
-    {
-      auto pair = optionsByName->find(option);
-      if(pair != optionsByName->end())
-      {
-        const OptionDescriptor& descriptor = *pair->second;
-        OptionContext& context = *reinterpret_cast<OptionContext*>(reinterpret_cast<char*>(behavior) + descriptor.offsetOfContext);
-        (behavior->*(descriptor.option))(OptionExecution(descriptor.name, context, behavior, fromSelect));
-        return context.stateType != OptionContext::initialState;
-      }
-      else
-        return false;
-    }
-
-    /**
-     * The method executes a list of options. It stops after the first option that reports that
-     * it was actually executed.
-     * @param behavior The behavior instance.
-     * @param options The list of option names. The options are executed in that order.
-     * @return Was an option actually executed?
-     */
-    static bool execute(CabslBehavior* behavior, const std::vector<std::string>& options)
-    {
-      for(const std::string& option : options)
-        if(execute(behavior, option, true))
-          return true;
-      return false;
-    }
-
-    /** Executes all handlers that initialize the definitions. */
-    static void executeInitHandlers()
-    {
-      if(initHandlers)
-        for(void (*initHandler)() : *initHandlers)
-          initHandler();
-    }
-  };
-
-protected:
-
-  /**
-   * A template class for collecting information about an option.
-   * @tparam descriptor A function that can return the description of the option.
-   */
-  template<void(*function)()> class RegisterFunction
-  {
-  private:
-    /** A helper structure to register the function. */
-    struct Registrar
-    {
-      Registrar() {function();}
-    };
-    static Registrar registrar; /**< The instance that registers the information about the option through construction. */
-
-  public:
-    /** A dummy constructor that enforces linkage of the static member. */
-    RegisterFunction() {static_cast<void>(&registrar);}
-  };
-
-  template<void(*function)()> class OptionInfo : public OptionContext, public RegisterFunction<function> {};
-
-private:
-  static OptionInfos collectOptions; /**< This global instantiation collects data about all options. */
-  typename OptionContext::StateType stateType = OptionContext::normalState; /**< The state type of the last option called. */
-  unsigned lastFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
-  unsigned char depth = 0; /**< The depth level of the current option. Used for activation graph. */
-  ActivationGraph* activationGraph; /**< The activation graph for debug output. Can be zero if not set. */
-  bool definitionsInitialized = false; /**< Were the definitions already initialized? */
-
-protected:
-  static thread_local Cabsl* _theInstance; /**< The instance of this behavior used. */
-  unsigned _currentFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
-
-  /**
-   * Constructor.
-   * @param activationGraph When set, the activation graph will be filled with the
-   *                        options and states executed in each frame.
-   */
-  Cabsl(ActivationGraph* activationGraph = nullptr) :
+    Cabsl(ActivationGraph* activationGraph = nullptr) :
     activationGraph(activationGraph)
-  {
-    static_cast<void>(&collectOptions); // Enforce linking of this global object
-  }
-
-public:
-  /**
-   * Must be call at the beginning of each behavior execution cycle even if no option is called.
-   * @param frameTime The current time in ms.
-   */
-  void beginFrame(unsigned frameTime)
-  {
-    _currentFrameTime = frameTime;
-    if(activationGraph)
-      activationGraph->graph.clear();
-    _theInstance = this;
-    if(!definitionsInitialized)
     {
-      OptionInfos::executeInitHandlers();
-      definitionsInitialized = true;
+      static_cast<void>(&collectOptions); // Enforce linking of this global object
     }
-  }
+
+  public:
+    /**
+     * Must be call at the beginning of each behavior execution cycle even if no option is called.
+     * @param frameTime The current time in ms.
+     */
+    void beginFrame(unsigned frameTime)
+    {
+      _currentFrameTime = frameTime;
+      if(activationGraph)
+        activationGraph->graph.clear();
+      _theInstance = this;
+      if(!definitionsInitialized)
+      {
+        OptionInfos::executeInitHandlers();
+        definitionsInitialized = true;
+      }
+    }
+
+    /**
+     * Execute an option as a root.
+     * Several root options can be executed in a single behavior execution cycle.
+     * @param root The root option that is executed.
+     */
+    void execute(const std::string& root)
+    {
+      OptionInfos::execute(static_cast<CabslBehavior*>(this), root);
+    }
+
+    /** Must be called at the end of each behavior execution cycle even if no option is called. */
+    void endFrame()
+    {
+      _theInstance = nullptr;
+      lastFrameTime = _currentFrameTime;
+    }
+  };
+
+  template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+    thread_local Cabsl<CabslBehavior, InFileStream, OutStringStream>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::_theInstance;
+  template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+    std::unordered_map<std::string, const typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionDescriptor*>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos::optionsByName;
+  template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+    std::vector<void (*)()>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos::initHandlers;
+  template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+    typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos Cabsl<CabslBehavior, InFileStream, OutStringStream>::collectOptions;
+  template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+    template<void(*function)()> typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::template RegisterFunction<function>::Registrar Cabsl<CabslBehavior, InFileStream, OutStringStream>::RegisterFunction<function>::registrar;
 
   /**
-   * Execute an option as a root.
-   * Several root options can be executed in a single behavior execution cycle.
-   * @param root The root option that is executed.
+   * Together with decltype, the following template allows to use any type
+   * for declarations, even array types such as int[4]. It also works with
+   * template parameters without the use of typename.
+   * decltype(TypeWrapper<myType>::type) myVar;
    */
-  void execute(const std::string& root)
-  {
-    OptionInfos::execute(static_cast<CabslBehavior*>(this), root);
-  }
-
-  /** Must be called at the end of each behavior execution cycle even if no option is called. */
-  void endFrame()
-  {
-    _theInstance = nullptr;
-    lastFrameTime = _currentFrameTime;
-  }
-};
-
-template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
-thread_local Cabsl<CabslBehavior, InFileStream, OutStringStream>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::_theInstance;
-template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
-std::unordered_map<std::string, const typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionDescriptor*>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos::optionsByName;
-template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
-std::vector<void (*)()>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos::initHandlers;
-template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
-typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos Cabsl<CabslBehavior, InFileStream, OutStringStream>::collectOptions;
-template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
-template<void(*function)()> typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::template RegisterFunction<function>::Registrar Cabsl<CabslBehavior, InFileStream, OutStringStream>::RegisterFunction<function>::registrar;
-
-/**
- * Together with decltype, the following template allows to use any type
- * for declarations, even array types such as int[4]. It also works with
- * template parameters without the use of typename.
- * decltype(CabslTypeWrapper<myType>::type) myVar;
- */
-template<typename T> struct CabslTypeWrapper {static T type;};
+  template<typename T> struct TypeWrapper {static T type;};
+}
 
 /**
  * The macro defines a state. It must be followed by a block of code that defines the state's body.
@@ -687,13 +636,13 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 #define _CABSL_STRUCT_ARGS_1_1(name, ...)
 
 // Generate the declaration and optional initialization of a field in the structure.
-#define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
+#define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
 
 // Define a structure for definitions. If "load" is used, the structure has a function "_read".
 #define _CABSL_STRUCT_DEFS___(name, class, ...)
 #define _CABSL_STRUCT_DEFS_1__(name, class, ...)
 #define _CABSL_STRUCT_DEFS__1_(name, class, ...) \
-  struct _##name##Defs : public CabslStructBase \
+  struct _##name##Defs : public cabsl::StructBase \
   { \
     _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
   };
@@ -701,7 +650,7 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 #define _CABSL_STRUCT_DEFS__1_1(name, class, ...) _CABSL_STRUCT_DEFS_IV(name, , __VA_ARGS__)
 #define _CABSL_STRUCT_DEFS_1_1_1(name, class, ...) _CABSL_STRUCT_DEFS_IV(name, class::, __VA_ARGS__)
 #define _CABSL_STRUCT_DEFS_IV(name, prefix, ...) \
-  struct _##name##Defs : public CabslStructBase \
+  struct _##name##Defs : public cabsl::StructBase \
   { \
     _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
     void _read(prefix InFileStream& _stream) \
@@ -726,13 +675,13 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 #define _CABSL_STRUCT_VARS_I(name, ...) _CABSL_STRUCT_VARS_II(name, _CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
 #define _CABSL_STRUCT_VARS_II(name, n, ...) _CABSL_STRUCT_VARS_III(name, n, (_CABSL_STRUCT_WITHOUT_INIT, __VA_ARGS__))
 #define _CABSL_STRUCT_VARS_III(name, n, pair) \
-  struct _##name##Vars : public CabslStructBase \
+  struct _##name##Vars : public cabsl::StructBase \
   { \
     _CABSL_ATTR_##n pair \
   };
 
 // Generate the declaration of a field in the structure.
-#define _CABSL_STRUCT_WITHOUT_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq);
+#define _CABSL_STRUCT_WITHOUT_INIT(seq) std::remove_const<std::remove_reference<decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq);
 
 // Define a initialization handler and a function that registers it.
 // It is distinguished whether a class was specified (implementation file) or not (header) and
@@ -1020,10 +969,10 @@ template<typename T> struct CabslTypeWrapper {static T type;};
     !(_args._CABSL_VAR(seq) == _p))
 
 // Generate an argument declaration for the formal arguments of a method.
-#define _CABSL_DECL_ARG(seq) decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type) _CABSL_VAR(seq),
+#define _CABSL_DECL_ARG(seq) decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type) _CABSL_VAR(seq),
 
 // Generate an argument declaration with initialization for the formal arguments of a method.
-#define _CABSL_DECL_ARG_WITH_INIT(seq) decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type) _CABSL_VAR(seq) _CABSL_INIT(seq),
+#define _CABSL_DECL_ARG_WITH_INIT(seq) decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type) _CABSL_VAR(seq) _CABSL_INIT(seq),
 
 // Generate a variable name for the list of actual arguments of a method call.
 #define _CABSL_PASS_ARG(seq) _args._CABSL_VAR(seq),
@@ -1032,7 +981,7 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 #define _CABSL_PASS_PARAM(seq) _CABSL_VAR(seq),
 
 // Generate an argument declaration for the formal arguments of a method.
-#define _CABSL_DECL_DEF(seq) const decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)& _CABSL_VAR(seq),
+#define _CABSL_DECL_DEF(seq) const decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)& _CABSL_VAR(seq),
 
 // Generate a variable name for the list of actual arguments of a method call.
 #define _CABSL_PASS_DEF(seq) _defs->_CABSL_VAR(seq),
@@ -1042,7 +991,7 @@ template<typename T> struct CabslTypeWrapper {static T type;};
   _o.addArgument(#seq, _vars->_CABSL_VAR(seq));
 
 // Generate an argument declaration for the formal arguments of a method.
-#define _CABSL_DECL_VAR(seq) decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)& _CABSL_VAR(seq),
+#define _CABSL_DECL_VAR(seq) decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)& _CABSL_VAR(seq),
 
 // Generate a variable name for the list of actual arguments of a method call.
 #define _CABSL_PASS_VAR(seq) _vars->_CABSL_VAR(seq),

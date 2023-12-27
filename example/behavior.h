@@ -32,7 +32,7 @@
 #undef KICK
 #undef DO_NOTHING
 
-class Behavior : public Cabsl<Behavior> {
+class Behavior : public cabsl::Cabsl<Behavior> {
 public:
   /**
    * All actions that can be performed. The first nine actions are actually
@@ -65,7 +65,7 @@ private:
   static Action team_ball_direction[4]; /**< The shared ball directions of all players. */
   static int team_x[4]; /**< The shared x coordinates of all players. */
   static int team_y[4]; /**< The shared y coordinates of all players. */
-  ActivationGraph activationGraph; /**< The activation graph used for debugging. */
+  cabsl::ActivationGraph activationGraph; /**< The activation graph used for debugging. */
   WINDOW* window = nullptr; /**< The window in which the activation graph is shown. */
 
   /** Update the world state, i.e. the input symbols. */

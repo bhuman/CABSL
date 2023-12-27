@@ -163,7 +163,7 @@ void Behavior::showActivationGraph()
   wclear(window);
 
   int y = 0;
-  for(const ActivationGraph::Node& activeOption : activationGraph.graph)
+  for(const cabsl::ActivationGraph::Node& activeOption : activationGraph.graph)
   {
     mvwprintw(window, y, activeOption.depth - 1, "%s", activeOption.option.c_str());
     mvwprintw(window, y++, 35, "%4d", activeOption.optionTime);
