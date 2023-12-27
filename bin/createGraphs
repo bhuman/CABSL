@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# This script generates a number of pdf files from the CABSL behavior.
+# This script generates a number of svg files from the CABSL behavior.
 # Its main parameter is a file that directly includes all options.
 # It requires GraphViz's program 'dot' to be installed.
 #
@@ -8,22 +8,35 @@
 
 usage()
 {
-  echo >&2 "usage: $0 { options } <header file>"
+  echo >&2 "usage: $0 { options } ( <header file> | -m <name> <cpp files> )"
   echo >&2 "  options:"
+  echo >&2 "    -a <file> manually add data"
   echo >&2 "    -d <dot>  path to executable 'dot'"
   echo >&2 "    -h        show this help"
+  echo >&2 "    -m <name> options contained in multiple cpp files, use 'name' for main graph"
+  echo >&2 "    -p        output pdf instead of svg"
   exit 1
 }
 
 set -eu
 
-scriptPath=$(echo $0 | sed "s|^\.\./|`pwd`/../|" | sed "s|^\./|`pwd`/|")
-baseDir=$(dirname "${scriptPath}")
+format=svg
+urlPath=file:
 
 # Process arguments
 dot=dot
+cpp=
+data=
 while [ $# -gt 0 ]; do
   case $1 in
+    "-a")
+      shift
+      data=`cat $1`
+      ;;
+    "-m")
+      shift
+      cpp="$1"
+      ;;
     "-d")
       shift
       if [ $# -gt 0 ]; then
@@ -35,6 +48,10 @@ while [ $# -gt 0 ]; do
       ;;
     "-h")
       usage
+      ;;
+    "-p")
+      format=pdf
+      urlPath=file://.`pwd`/
       ;;
     -*)
       echo >&2 "error: unknown option '$1'"
@@ -61,10 +78,21 @@ elif [ -z "$dotAvailable" ]; then
 fi
 
 # Collect the relevant information from the options
-base=`dirname "$1"`
-files=`grep "#include[ 	][ 	]*\"" <"$1" | sed "s%^[ 	]*#include[ 	]*\"\([^\"]*\)\".*$%$base/\1%"`
-options=`grep -h "^[ 	]*option[ 	]*(" $files | sed "s%^[ 	]*option[ 	]*([ 	]*\([A-Za-z_][A-Za-z0-9_]*\).*$%\1%" | tr '\n' '|' | sed "s%|$%%"`
-lines=`cat $files \
+if [ -z "$cpp" ]; then
+  base=`dirname "$1"`
+  fileList=`grep "#include[ 	][ 	]*\"" <"$1" | sed "s%^[ 	]*#include[ 	]*\"\([^\"]*\)\".*$%$base/\1%"`
+  files=`while read file; do
+    if [ -e "$file" ]; then
+      echo "$file"
+    fi
+  done <<<"$fileList"`
+else
+  files=`for file in "$@"; do
+    echo "$file"
+  done`
+fi
+options=`grep -h "^[ 	]*option[ 	]*(" $files | sed -E "s%^[ 	]*option[ 	]*\([ 	]*(\([A-Za-z_][A-Za-z0-9_]*\)[ 	]*)?([A-Za-z_][A-Za-z0-9_]*).*$%\2%" | tr '\n' '|' | sed "s%|$%%"`
+lines=`cat <<<"$data" ; cat $files \
 | sed "s%//.*%%" \
 | tr '\t' ' ' \
 | tr -d '\r' \
@@ -72,8 +100,8 @@ lines=`cat $files \
 | sed -e "s%/\*\([^*]*\*[^/]\)*[^*]*\*\**/%%g" \
   -e "s%[ 	]*	%	%g" \
 | tr '\t' '\n' \
-| grep -E "^[ 	]*option[ 	]*\([ 	]*[A-Za-z_][A-Za-z0-9_]*|(^|^.*[^A-Za-z0-9_])((($options|state|initial_state|target_state|aborted_state)[ 	]*\()|goto[ 	][ 	]*[A-Za-z_][A-Za-z0-9_]*)" \
-| sed -E -e "s%^[ 	]*option[ 	]*\([ 	]*([A-Za-z_][A-Za-z0-9_]*).*%option \1%" \
+| grep -E "^[ 	]*option[ 	]*\([ 	]*(\([A-Za-z_][A-Za-z0-9_]*\)[   ]*)?[A-Za-z_][A-Za-z0-9_]*|(^|^.*[^A-Za-z0-9_])((($options|state|initial_state|target_state|aborted_state)[ 	]*\()|goto[ 	][ 	]*[A-Za-z_][A-Za-z0-9_]*)" \
+| sed -E -e "s%^[ 	]*option[ 	]*\([ 	]*(\([A-Za-z_][A-Za-z0-9_]*\)[   ]*)?([A-Za-z_][A-Za-z0-9_]*).*%option \2%" \
   -e "s%(^|^.*[^A-Za-z0-9_])($options)[ 	]*\(.*%call \2%" \
   -e "s%(^|^.*[^A-Za-z0-9_])(state|initial_state|target_state|aborted_state)[ 	]*\(([A-Za-z_][A-Za-z0-9_]*).*%\2 \3%" \
   -e "s%(^|^.*[^A-Za-z0-9_])goto[ 	][ 	]*([A-Za-z_][A-Za-z0-9_]*).*%goto \2%"`
@@ -81,6 +109,7 @@ lines=`cat $files \
 # Generate temporary files containing all nodes and edges
 optionsTmp=/tmp/options.tmp
 rm -f "$optionsTmp"
+touch /tmp/timestamp
 option=
 while read line; do
   type=`sed "s% .*%%" <<<"$line"`
@@ -89,34 +118,38 @@ while read line; do
   if [ "$type" == "option" ]; then
     option=$id
     echo "Reading option '$option'" >&2
-    echo "  $id [label=\"$label\", URL = \"file://.`pwd`/$option.pdf\"];" >>"$optionsTmp"
+    echo "  $id [label=\"$label\", tooltip = \"option '$id'\", URL = \"$urlPath$option.$format\"];" >>"$optionsTmp"
     common=
     state=
     internalTmp=/tmp/internal_$option.tmp
     externalTmp=/tmp/external_$option.tmp
-    rm -f "$internalTmp"
-    rm -f "$externalTmp"
+    if [ -f "$internalTmp" -a "$internalTmp" -ot /tmp/timestamp ]; then
+      rm "$internalTmp"
+    fi
+    if [ -f "$externalTmp" -a "$externalTmp" -ot /tmp/timestamp ]; then
+      rm "$externalTmp"
+    fi
   elif [ "$type" == "call" ]; then
     echo "$option -> $id;" >>"$optionsTmp"
     if [ "$state" == "" ]; then
-      echo "option_ -> option_$id [ltail = cluster_, sametail = dummy, color = \"#808080\" style = dashed minlen = 2];" >>"$externalTmp"
+      echo "option_ -> option_$id [ltail = cluster_, sametail = dummy, dir = both, arrowtail = dot, color = \"#808080\" style = dashed minlen = 2];" >>"$externalTmp"
       echo "option_ [style = invis];" >>"$internalTmp"
     else
       echo "$state -> option_$id [color = \"#808080\" style = dashed minlen = 2];" >>"$externalTmp"
     fi
-    echo "option_$id [shape = rectangle, label = \"$label\", URL = \"file://.`pwd`/$id.pdf\"];" >>"$externalTmp"
+    echo "option_$id [shape = rectangle, label = \"$label\", tooltip = \"option '$id'\", URL = \"$urlPath$id.$format\"];" >>"$externalTmp"
   elif [ "$type" == "state" ]; then
     state=$id
-    echo " $state [shape = circle, label = \"$label\"];" >>"$internalTmp"
+    echo " $state [shape = circle, label = \"$label\", tooltip = \"state '$id'\"];" >>"$internalTmp"
   elif [ "$type" == "initial_state" ]; then
     state=$id
-    echo "  $state [shape = Mcircle, label = \"$label\"];" >>"$internalTmp"
+    echo "  $state [shape = Mcircle, label = \"$label\", tooltip = \"initial_state '$id'\"];" >>"$internalTmp"
   elif [ "$type" == "target_state" ]; then
     state=$id
-    echo "$state [shape = doublecircle, label = \"$label\"];" >>"$internalTmp"
+    echo "$state [shape = doublecircle, label = \"$label\", tooltip = \"target_state '$id'\"];" >>"$internalTmp"
   elif [ "$type" == "aborted_state" ]; then
     state=$id
-    echo "$state [shape = doubleoctagon, regular = true, label = \"$label\"];" >>"$internalTmp"
+    echo "$state [shape = doubleoctagon, regular = true, label = \"$label\", tooltip = \"aborted_state '$id'\"];" >>"$internalTmp"
   elif [ "$type" == "goto" ]; then
     if [ -z "$state" ]; then
       common=`echo "$common $id"`
@@ -132,19 +165,24 @@ while read line; do
     done
   fi
 done <<<"$lines"
+rm /tmp/timestamp
 
 # Write the main option graph
-file=`basename "${1%.*}.pdf"`
+if [ -z "$cpp" ]; then
+  file=`basename "${1%.*}.$format"`
+else
+  file="$cpp.$format"
+fi
 echo "Writing graph '$file'" >&2
 (
-  echo "digraph G {"
+  echo "digraph \"\" {"
   echo "  margin = 0;"
   echo "  node [shape = box, fontname = Arial, fontsize=9, fontcolor = \"#005A9C\", margin = 0.05];"
   echo "  edge [arrowsize=0.8];"
   sort <"$optionsTmp" | uniq
   rm "$optionsTmp"
   echo "}"
-) | "$dot" -Tpdf >"$file"
+) | "$dot" -T$format >"$file"
 
 # Write graphs for all options
 options=`tr '|' '\n' <<<"$options"`
@@ -152,11 +190,11 @@ while read option; do
   internalTmp=/tmp/internal_$option.tmp
   if [ -e "$internalTmp" ]; then
     externalTmp=/tmp/external_$option.tmp
-    file=`basename "${option%.*}.pdf"`
+    file=`basename "${option%.*}.$format"`
     label=`sed -E -e "s%_% %g" -e "s%([a-z])([A-Z])%\1 \2%g" <<<"$option" | tr '[:upper:]' '[:lower:]'`
     echo "Writing graph '$file'" >&2
     (
-      echo "digraph G {"
+      echo "digraph \"\" {"
       echo "margin = 0;"
       echo "node [style = filled, fillcolor = white, fontname = Arial, fontsize=9, fontcolor = \"#005A9C\", margin = 0.05];"
       echo "ranksep = 0.4;"
@@ -165,6 +203,7 @@ while read option; do
       echo "compound = true;"
       echo "subgraph cluster_ {"
       echo "label = \"option '$label'\""
+      echo "tooltip = \"option '$option'\""
       echo "labeljust = l;"
       echo "style = filled;"
       echo "fillcolor = \"#F4F4F4\";"
@@ -179,6 +218,6 @@ while read option; do
       rm "$externalTmp"
       fi
       echo "}"
-    ) | "$dot" -Tpdf >"$file"
+    ) | "$dot" -T$format >"$file"
   fi
 done <<<"$options"

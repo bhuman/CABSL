@@ -29,7 +29,7 @@ cabsl.o: example/main.cpp ascii-soccer/soccer.h ascii-soccer/players.h $(BEHAVIO
 	g++ -w -std=c++20 -Iascii-soccer -Iinclude -DEAST_TEAM -c example/main.cpp -o cabsl.o
 
 graphs:
-	bin/createGraphs example/options.h
+	bin/createGraphs -p example/options.h
 
 clean: 
 	rm -f soccer *.o *.pdf
