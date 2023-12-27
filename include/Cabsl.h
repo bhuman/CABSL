@@ -132,17 +132,83 @@ struct CabslStructBase
   virtual ~CabslStructBase() = default;
 };
 
+/** Helper class for reading configuration files of options. */
+class CabslInFileStream
+{
+  std::ifstream stream; /**< The stream to read from. */
+
+  /**
+   * Expect a certain string in the input. If the string is not present,
+   * the operation fails with an exception.
+   * @param pattern The string.
+   */
+  void expect(const char* pattern)
+  {
+    char c;
+    while(isspace(static_cast<unsigned char>(stream.peek())) && *pattern != stream.peek())
+      stream.get(c);
+    while(*pattern && stream && *pattern == stream.peek())
+    {
+      stream.get(c);
+      ++pattern;
+    }
+    if(*pattern)
+      stream.setstate(std::ios::failbit);
+  }
+
+public:
+  /**
+   * Open a file for reading. If opening fails, an exception is thrown.
+   * @param filename The basename of the file. This implementation appends
+   * ".cfg" to the basename and then opens the file.
+   */
+  CabslInFileStream(const std::string& filename)
+  {
+    stream.exceptions(std::ios::failbit | std::ios::badbit);
+    stream.open(filename + ".cfg");
+  }
+
+  /**
+   * Read a name/value pair. They are separated by a colon. The value must
+   * be followed by a newline, even in the last line of the file.
+   * An exception is thrown if reading fails.
+   * @tparam U The type of the value. An operator >> must exist to read a
+   * value of this type.
+   * @param name The name that is expected. CABSL will actually pass a
+   * longer string, where the name is just the suffix. Everything up to the
+   * last space or closing parenthesis is skipped.
+   * @param value The variable the read value is written to.
+   */
+  template<typename U> void read(const char* name, U& value)
+  {
+    name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
+    expect(name);
+    expect(":");
+    stream >> value;
+    expect("\n");
+  }
+};
+
 /**
  * The base class for CABSL behaviors.
  * Note: Private variables that cannot be declared as private start with an
  * underscore.
- * @tparam T The class that implements the behavior. It must also be derived from
- * this class.
+ * @tparam CabslBehavior_ The class that implements the behavior. It must also be
+ * derived from this class.
+ * @tparam OutStringStream_ A class with an interface compatible to std::stringstream.
+ * Instances of the class are used to add arguments and variables to the activation
+ * graph.
+ * @tparam InFileStream_ A class with an interface compatible to CabslInFileStream. It
+ * is used to load definitions from configuration files.
  */
-template<typename T> class Cabsl
+template<typename CabslBehavior_, typename InFileStream_ = CabslInFileStream, typename OutStringStream_ = std::stringstream> class Cabsl
 {
+public:
+  using InFileStream = InFileStream_; /**< This type allows to access the stream class by name. */
+
 protected:
-  using CabslBehavior = T; /**< This type allows to access the derived class by name. */
+  using CabslBehavior = CabslBehavior_; /**< This type allows to access the derived class by name. */
+  using OutStringStream = OutStringStream_; /**< This type allows to access the stream class by name. */
 
   /**
    * The context stores the current state of an option.
@@ -191,9 +257,9 @@ protected:
     /** Helper to determine, whether A is streamable. */
     template<typename U> struct isStreamableBase
     {
-      template<typename V> static auto test(V*) -> decltype(std::declval<std::ostream&>() << std::declval<V>());
+      template<typename V> static auto test(V*) -> decltype(std::declval<OutStringStream&>() << std::declval<V>());
       template<typename> static auto test(...) -> std::false_type;
-      using type = typename std::is_same<std::ostream&, decltype(test<U>(nullptr))>::type;
+      using type = typename std::negation<typename std::is_same<std::false_type, decltype(test<U>(nullptr))>::type>::type;
     };
     template<typename U> struct isStreamable : isStreamableBase<U>::type {};
 
@@ -271,12 +337,8 @@ protected:
      */
     template<typename U> std::enable_if<isStreamable<U>::value>::type addArgument(const char* name, const U& value) const
     {
-      const char* p = name + std::strlen(name) - 1;
-      while(p >= name && *p != ')' && *p != ' ')
-        --p;
-      name = p + 1;
-
-      std::stringstream stream;
+      name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
+      OutStringStream stream;
       stream << value;
       const std::string text = stream.str();
       if(!text.empty())
@@ -484,18 +546,6 @@ protected:
     static_cast<void>(&collectOptions); // Enforce linking of this global object
   }
 
-  /**
-   * The method should return the path of a configuration file for a certain option.
-   * The default implementation just appends ".cfg" to the name of the option.
-   * @param option The name of the option.
-   * @return The path to the configuration file for the option. Can either be
-   *         relative to the current directory or absolute.
-   */
-  std::string getFullPath(const std::string& option) const
-  {
-    return option + ".cfg";
-  }
-
 public:
   /**
    * Must be call at the beginning of each behavior execution cycle even if no option is called.
@@ -532,11 +582,16 @@ public:
   }
 };
 
-template<typename CabslBehavior> thread_local Cabsl<CabslBehavior>* Cabsl<CabslBehavior>::_theInstance;
-template<typename CabslBehavior> std::unordered_map<std::string, const typename Cabsl<CabslBehavior>::OptionDescriptor*>* Cabsl<CabslBehavior>::OptionInfos::optionsByName;
-template<typename CabslBehavior> std::vector<void (*)()>* Cabsl<CabslBehavior>::OptionInfos::initHandlers;
-template<typename CabslBehavior> typename Cabsl<CabslBehavior>::OptionInfos Cabsl<CabslBehavior>::collectOptions;
-template<typename CabslBehavior> template<void(*function)()> typename Cabsl<CabslBehavior>::template RegisterFunction<function>::Registrar Cabsl<CabslBehavior>::RegisterFunction<function>::registrar;
+template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+thread_local Cabsl<CabslBehavior, InFileStream, OutStringStream>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::_theInstance;
+template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+std::unordered_map<std::string, const typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionDescriptor*>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos::optionsByName;
+template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+std::vector<void (*)()>* Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos::initHandlers;
+template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::OptionInfos Cabsl<CabslBehavior, InFileStream, OutStringStream>::collectOptions;
+template<typename CabslBehavior, typename InFileStream, typename OutStringStream>
+template<void(*function)()> typename Cabsl<CabslBehavior, InFileStream, OutStringStream>::template RegisterFunction<function>::Registrar Cabsl<CabslBehavior, InFileStream, OutStringStream>::RegisterFunction<function>::registrar;
 
 /**
  * Together with decltype, the following template allows to use any type
@@ -594,7 +649,7 @@ template<typename T> struct CabslTypeWrapper {static T type;};
   _CABSL_DECL_CONTEXT_##hasClass##_##hasArgs(name) \
   _CABSL_STRUCT_ARGS_##hasClass##_##hasArgs(name, __VA_ARGS__) \
   _CABSL_NAMESPACE_BEGIN_##hasClass(class) \
-  _CABSL_STRUCT_DEFS_##hasDefs##_##hasLoad(name, __VA_ARGS__) \
+  _CABSL_STRUCT_DEFS_##hasClass##_##hasDefs##_##hasLoad(name, class, __VA_ARGS__) \
   _CABSL_STRUCT_VARS_##hasVars(name, __VA_ARGS__) \
   _CABSL_NAMESPACE_END_##hasClass(class) \
   _CABSL_INIT_DEFS_##hasClass##_##hasDefs##_##hasLoad(name, class) \
@@ -635,17 +690,21 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 #define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(CabslTypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
 
 // Define a structure for definitions. If "load" is used, the structure has a function "_read".
-#define _CABSL_STRUCT_DEFS__(name, ...)
-#define _CABSL_STRUCT_DEFS_1_(name, ...) \
+#define _CABSL_STRUCT_DEFS___(name, class, ...)
+#define _CABSL_STRUCT_DEFS_1__(name, class, ...)
+#define _CABSL_STRUCT_DEFS__1_(name, class, ...) \
   struct _##name##Defs : public CabslStructBase \
   { \
     _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
   };
-#define _CABSL_STRUCT_DEFS_1_1(name, ...) \
+#define _CABSL_STRUCT_DEFS_1_1_(name, class, ...) _CABSL_STRUCT_DEFS__1_(name, class, __VA_ARGS__)
+#define _CABSL_STRUCT_DEFS__1_1(name, class, ...) _CABSL_STRUCT_DEFS_IV(name, , __VA_ARGS__)
+#define _CABSL_STRUCT_DEFS_1_1_1(name, class, ...) _CABSL_STRUCT_DEFS_IV(name, class::, __VA_ARGS__)
+#define _CABSL_STRUCT_DEFS_IV(name, prefix, ...) \
   struct _##name##Defs : public CabslStructBase \
   { \
     _CABSL_STRUCT_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
-    void _read(std::istream& _stream) \
+    void _read(prefix InFileStream& _stream) \
     { \
       _CABSL_READ_DEFS_I(name, _CABSL_GET_DEFS(__VA_ARGS__), ignore) \
     } \
@@ -658,7 +717,7 @@ template<typename T> struct CabslTypeWrapper {static T type;};
 #define _CABSL_READ_DEFS_III(name, n, pair) _CABSL_ATTR_##n pair
 
 // Generate the declaration and optional initialization of a field in the structure.
-#define _CABSL_READ_DEF(seq) _stream >> _CABSL_VAR(seq);
+#define _CABSL_READ_DEF(seq) _stream.read(#seq, _CABSL_VAR(seq));
 
 // Define a structure that contains variables.
 // The structure is only defined if it is needed (addition "1" of the name).
@@ -683,9 +742,9 @@ template<typename T> struct CabslTypeWrapper {static T type;};
   static void _##name##InitReg();
 #define _CABSL_INIT_DEFS_1__(name, class)
 #define _CABSL_INIT_DEFS__1_(name, class) _CABSL_INIT_DEFS_I(name, , static, )
-#define _CABSL_INIT_DEFS__1_1(name, class) _CABSL_INIT_DEFS_I(name, , static, std::ifstream _stream(static_cast<CabslBehavior*>(_theInstance)->getFullPath(#name)); assert(_stream.is_open()); _defs->_read(_stream); _stream.close();)
+#define _CABSL_INIT_DEFS__1_1(name, class) _CABSL_INIT_DEFS_I(name, , static, InFileStream _stream(#name); _defs->_read(_stream);)
 #define _CABSL_INIT_DEFS_1_1_(name, class) _CABSL_INIT_DEFS_I(name, class::, , )
-#define _CABSL_INIT_DEFS_1_1_1(name, class) _CABSL_INIT_DEFS_I(name, class::, , std::ifstream _stream(static_cast<CabslBehavior*>(_theInstance)->getFullPath(#name)); assert(_stream.is_open()); _defs->_read(_stream); _stream.close();)
+#define _CABSL_INIT_DEFS_1_1_1(name, class) _CABSL_INIT_DEFS_I(name, class::, , InFileStream _stream(#name); _defs->_read(_stream);)
 #define _CABSL_INIT_DEFS_I(name, class, prefix, load) \
   prefix void class _##name##Init() \
   { \
