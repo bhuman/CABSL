@@ -2,7 +2,7 @@
  * @InFileStream.h
  *
  * Helper class for reading configuration files of options.
- * It is based on std::ifstream, i.e. all values that should
+ * It is based on `std::ifstream`, i.e. all values that should
  * be read must be streamable with that class. In case of an
  * error, an exception is thrown. Unfortunately, this simple
  * implementation does not provide helpful error messages.
@@ -60,7 +60,7 @@ namespace cabsl
     /**
      * Open a file for reading. If opening fails, an exception is thrown.
      * @param basename The basename of the file. This implementation appends
-     * ".cfg" to the basename and then opens the file.
+     * `.cfg` to the basename and then opens the file.
      */
     InFileStream(const std::string& basename)
     {
@@ -72,7 +72,7 @@ namespace cabsl
      * Read a name/value pair. They are separated by a colon. The value must
      * be followed by a newline, even in the last line of the file.
      * An exception is thrown if reading fails.
-     * @tparam U The type of the value. An operator >> must exist to read a
+     * @tparam U The type of the value. An operator `>>` must exist to read a
      * value of this type.
      * @param name The name that is expected. CABSL will actually pass a
      * longer string, where the name is just the suffix. Everything up to the

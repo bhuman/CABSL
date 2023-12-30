@@ -7,12 +7,6 @@
  *
  * Grammar:
  *
- * The file defines a set of macros that define the C-based agent
- * behavior specification language (CABSL). Semantically, it follows
- * the ideas of XABSL.
- *
- * Grammar:
- *
  *     <cabsl>       = { <option> }
  *
  *     <option>      =  option '(' [ '(' <C-ident> ')' ] <C-ident>
@@ -59,14 +53,14 @@
  *
  * Options can declare three kinds of additional parameters:
  *
- * - Arguments (args) that can be passed to the option.
- * - Definitions (defs, load) define constant parameters of the option, i.e.
- *   usually values the implementation depends upon. If "load" is used
- *   instead of "defs", their values are loaded from a configuration file. The
+ * - Arguments (`args`) that can be passed to the option.
+ * - Definitions (`defs`, `load`) define constant parameters of the option, i.e.
+ *   usually values the implementation depends upon. If `load` is used
+ *   instead of `defs`, their values are loaded from a configuration file. The
  *   name of the file depends on the implementation of the stream used to
  *   read these files. Look at the description of "InFileStream.h" for a
  *   description of the default implementation.
- * - Variables (vars) define option-local variables. They keep their
+ * - Variables (`vars`) define option-local variables. They keep their
  *   values from each call of the option to the next call. However, they
  *   are (re-)initialized with their default values if the option was not
  *   executed in the previous cycle.
@@ -86,27 +80,27 @@
  * If options with arguments are called, a single struct is passed
  * containing all arguments. This means that the list of actual arguments
  * has to be enclosed in braces. This allows to specify their names in the
- * call, e.g. 'go_to_point({.x = 10, .y = 20})'. Arguments not specified
+ * call, e.g. `go_to_point({.x = 10, .y = 20})`. Arguments not specified
  * are set to their default values, either the ones that were given in the
  * argument list of the option or the default value for the datatype.
  *
- * The command 'select_option' allows to execute one option from a list of
+ * The command `select_option` allows to execute one option from a list of
  * options. It is tried to execute each option in the list in the sequence they
  * are given. If an option determines that it cannot currently be executed,
- * it stays in its 'initial_state'. Otherwise, it is run normally. 'select_option'
+ * it stays in its `initial_state`. Otherwise, it is run normally. `select_option`
  * stops after the first option that was actually executed. Note that an
- * option that stays in its 'initial_state' when it was called by 'select_option'
+ * option that stays in its `initial_state` when it was called by `select_option`
  * is considered as not having been executed at all if it has no action block
  * for that state. If it has, the block is still executed, but neither the
- * 'option_time' nor the 'state_time' are increased.
+ * `option_time` nor the `state_time` are increased.
  *
  * If Microsoft Visual Studio is used and options are included from separate
  * files, the following preprocessor code might be added before including
- * this file. "Class" has to be replaced by the template parameter of Cabsl:
+ * this file. `Class` has to be replaced by the template parameter of `Cabsl`:
  *
- * #ifdef __INTELLISENSE__
- * #define INTELLISENSE_PREFIX Class::
- * #endif
+ *     #ifdef __INTELLISENSE__
+ *     #define INTELLISENSE_PREFIX Class::
+ *     #endif
  *
  * @author Thomas Röfer
  */
@@ -164,7 +158,7 @@ namespace cabsl
     class OptionContext
     {
     public:
-      /** The different types of states (for implementing initial_state, target_state, and aborted_state). */
+      /** The different types of states (for implementing `initial_state`, `target_state`, and `aborted_state`). */
       enum StateType
       {
         normalState,
@@ -175,12 +169,12 @@ namespace cabsl
 
       int state; /**< The state currently selected. This is actually the line number in which the state was declared. */
       const char* stateName; /**< The name of the state (for activation graph). */
-      unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (except for the initial state when called from \c select_option). */
+      unsigned lastFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (except for the initial state when called from `select_option`). */
       unsigned lastSelectFrame = static_cast<unsigned>(-1); /**< The timestamp of the last frame in which this option was executed (in any case). */
-      unsigned optionStart; /**< The time when the option started to run (for option_time). */
-      unsigned stateStart; /**< The time when the current state started to run (for state_time). */
+      unsigned optionStart; /**< The time when the option started to run (for `option_time`). */
+      unsigned stateStart; /**< The time when the current state started to run (for `state_time`). */
       StateType stateType; /**< The type of the current state in this option. */
-      StateType subOptionStateType; /**< The type of the state of the last suboption executed (for action_done and action_aborted). */
+      StateType subOptionStateType; /**< The type of the state of the last suboption executed (for `action_done` and `action_aborted`). */
       bool addedToGraph; /**< Was this option already added to the activation graph in this frame? */
       bool transitionExecuted; /**< Has a transition already been executed? True after a state change. */
       bool hasCommonTransition; /**< Does this option have a common transition? Is reset when entering the first state. */
@@ -201,8 +195,7 @@ namespace cabsl
      */
     class OptionExecution
     {
-    private:
-      /** Helper to determine, whether A is streamable. */
+      /** Helper to determine, whether U is streamable. */
       template<typename U> struct isStreamableBase
       {
         template<typename V> static auto test(V*) -> decltype(std::declval<OutStringStream&>() << std::declval<V>());
@@ -213,7 +206,7 @@ namespace cabsl
 
       const char* optionName; /**< The name of the option (for activation graph). */
       Cabsl* instance; /**< The object that encapsulates the behavior. */
-      bool fromSelect; /**< Option is called from 'select_option'. */
+      bool fromSelect; /**< Option is called from `select_option`. */
       mutable std::vector<std::string> arguments; /**< Argument names and their values. */
 
     public:
@@ -227,7 +220,7 @@ namespace cabsl
        * @param instance The object that encapsulates the behavior.
        */
       OptionExecution(const char* optionName, OptionContext& context, Cabsl* instance, bool fromSelect = false) :
-      optionName(optionName), instance(instance), fromSelect(fromSelect), context(context)
+        optionName(optionName), instance(instance), fromSelect(fromSelect), context(context)
       {
         if(context.lastFrame != instance->lastFrameTime && context.lastFrame != instance->_currentFrameTime)
         {
@@ -237,7 +230,7 @@ namespace cabsl
           context.stateType = OptionContext::initialState;
         }
         if(context.lastSelectFrame != instance->lastFrameTime && context.lastSelectFrame != instance->_currentFrameTime)
-          context.subOptionStateType = OptionContext::normalState; // reset action_done and action_aborted
+          context.subOptionStateType = OptionContext::normalState; // reset `action_done` and `action_aborted`
         context.addedToGraph = false; // not added to graph yet
         context.transitionExecuted = false; // no transition executed yet
         context.hasCommonTransition = false; // until one is found, it is assumed that there is no common transition
@@ -254,7 +247,7 @@ namespace cabsl
           addToActivationGraph(); // add to activation graph if it has not been already
           context.lastFrame = instance->_currentFrameTime; // Remember that this option was called in this frame
         }
-        context.lastSelectFrame = instance->_currentFrameTime; // Remember that this option was called in this frame (even in select_option/initial)
+        context.lastSelectFrame = instance->_currentFrameTime; // Remember that this option was called in this frame (even in `select_option`/`initial_state`)
         --instance->depth; // decrease depth counter for activation graph
         context.subOptionStateType = instance->stateType; // remember the state type of the last sub option called
         instance->stateType = context.stateType; // publish the state type of this option, so the caller can grab it
@@ -267,7 +260,7 @@ namespace cabsl
        */
       void updateState(int newState, typename OptionContext::StateType stateType) const
       {
-        assert(context.hasCommonTransition != context.transitionExecuted); // [common_]transition is missing
+        assert(context.hasCommonTransition != context.transitionExecuted); // `[common_]transition` is missing
         context.transitionExecuted = true; // a transition was executed, do not execute another one
         if(context.state != newState) // ignore transitions that stay in the same state
         {
@@ -288,9 +281,7 @@ namespace cabsl
         name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
         OutStringStream stream;
         stream << value;
-        const std::string text = stream.str();
-        if(!text.empty())
-          arguments.emplace_back(name + (" = " + text));
+        arguments.emplace_back(name + (" = " + stream.str()));
       }
 
       /** Does not write the argument to a stream, because it is not streamable. */
@@ -332,7 +323,7 @@ namespace cabsl
        * @param offsetOfContext The memory offset of the context within the behavior class.
        */
       OptionDescriptor(const char* name, void (CabslBehavior::*option)(const OptionExecution&), size_t offsetOfContext) :
-      name(name), option(option), offsetOfContext(offsetOfContext), index(0)
+        name(name), option(option), offsetOfContext(offsetOfContext), index(0)
       {}
     };
 
@@ -407,7 +398,7 @@ namespace cabsl
        * executed.
        * @param behavior The behavior instance.
        * @param option The name of the option.
-       * @param fromSelect Was this method called fron "select_option"?
+       * @param fromSelect Was this method called from `select_option`?
        * @return Was the option actually executed?
        */
       static bool execute(CabslBehavior* behavior, const std::string& option, bool fromSelect = false)
@@ -449,7 +440,6 @@ namespace cabsl
     };
 
   protected:
-
     /**
      * A template class for collecting information about an option.
      * @tparam descriptor A function that can return the description of the option.
@@ -475,7 +465,7 @@ namespace cabsl
     static OptionInfos collectOptions; /**< This global instantiation collects data about all options. */
     typename OptionContext::StateType stateType = OptionContext::normalState; /**< The state type of the last option called. */
     unsigned lastFrameTime = 0; /**< The timestamp of the last time the behavior was executed. */
-    unsigned char depth = 0; /**< The depth level of the current option. Used for activation graph. */
+    int depth = 0; /**< The depth level of the current option. Used for activation graph. */
     ActivationGraph* activationGraph; /**< The activation graph for debug output. Can be zero if not set. */
     bool definitionsInitialized = false; /**< Were the definitions already initialized? */
 
@@ -489,14 +479,14 @@ namespace cabsl
      *                        options and states executed in each frame.
      */
     Cabsl(ActivationGraph* activationGraph = nullptr) :
-    activationGraph(activationGraph)
+      activationGraph(activationGraph)
     {
       static_cast<void>(&collectOptions); // Enforce linking of this global object
     }
 
   public:
     /**
-     * Must be call at the beginning of each behavior execution cycle even if no option is called.
+     * Must be called at the beginning of each behavior execution cycle even if no option is called.
      * @param frameTime The current time in ms.
      */
     void beginFrame(unsigned frameTime)
@@ -527,6 +517,7 @@ namespace cabsl
     {
       _theInstance = nullptr;
       lastFrameTime = _currentFrameTime;
+      assert(depth == 0);
     }
   };
 
@@ -558,14 +549,14 @@ namespace cabsl
 
 /**
  * The macro defines a target state. It must be followed by a block of code that defines the state's body.
- * A parent option can check whether a target state has been reached through action_done.
+ * A parent option can check whether a target state has been reached through `action_done`.
  * @param name The name of the target state.
  */
 #define target_state(name) _state(name, __LINE__, OptionContext::targetState)
 
 /**
  * The macro defines an aborted state. It must be followed by a block of code that defines the state's body.
- * A parent option can check whether an aborted state has been reached through action_aborted.
+ * A parent option can check whether an aborted state has been reached through `action_aborted`.
  * @param name The name of the aborted state.
  */
 #define aborted_state(name) _state(name, __LINE__, OptionContext::abortedState)
@@ -592,8 +583,8 @@ namespace cabsl
 #define _CABSL_OPTION_I_1(name, hasArgs, hasDefs, hasLoad, hasVars, ...) _CABSL_OPTION_II(_CABSL_VAR(name), _CABSL_OPTION_I_1_I(name), 1, hasArgs, hasDefs, hasLoad, hasVars, __VA_ARGS__)
 #define _CABSL_OPTION_I_1_I(name) _CABSL_DECL_I name))
 
-// Generate the actual code for the option header. The "has" parameters are either
-// "1" or empty.
+// Generate the actual code for the option header. The `has` parameters are either
+// `1` or empty.
 #define _CABSL_OPTION_II(name, class, hasClass, hasArgs, hasDefs, hasLoad, hasVars, ...) \
   _CABSL_DECL_CONTEXT_##hasClass##_##hasArgs(name) \
   _CABSL_STRUCT_ARGS_##hasClass##_##hasArgs(name, __VA_ARGS__) \
@@ -620,8 +611,8 @@ namespace cabsl
 #define _CABSL_DECL_CONTEXT_1_1(name, ...)
 
 // Define a structure that contains arguments.
-// The structure is only defined if it is needed (second "1" of the name).
-// It is only defined if the first "1" is not present, because the structure
+// The structure is only defined if it is needed (second `1` of the name).
+// It is only defined if the first `1` is not present, because the structure
 // for arguments is only defined inline, never in the implementation file.
 #define _CABSL_STRUCT_ARGS__(name, ...)
 #define _CABSL_STRUCT_ARGS_1_(name, ...)
@@ -638,7 +629,7 @@ namespace cabsl
 // Generate the declaration and optional initialization of a field in the structure.
 #define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
 
-// Define a structure for definitions. If "load" is used, the structure has a function "_read".
+// Define a structure for definitions. If `load` is used, the structure has a function `_read`.
 #define _CABSL_STRUCT_DEFS___(name, class, ...)
 #define _CABSL_STRUCT_DEFS_1__(name, class, ...)
 #define _CABSL_STRUCT_DEFS__1_(name, class, ...) \
@@ -669,7 +660,7 @@ namespace cabsl
 #define _CABSL_READ_DEF(seq) _stream.read(#seq, _CABSL_VAR(seq));
 
 // Define a structure that contains variables.
-// The structure is only defined if it is needed (addition "1" of the name).
+// The structure is only defined if it is needed (addition `1` of the name).
 #define _CABSL_STRUCT_VARS_(name, ...)
 #define _CABSL_STRUCT_VARS_1(name, ...) _CABSL_STRUCT_VARS_I(name, _CABSL_GET_VARS(__VA_ARGS__), ignore)
 #define _CABSL_STRUCT_VARS_I(name, ...) _CABSL_STRUCT_VARS_II(name, _CABSL_TUPLE_SIZE(__VA_ARGS__), __VA_ARGS__)
@@ -683,9 +674,9 @@ namespace cabsl
 // Generate the declaration of a field in the structure.
 #define _CABSL_STRUCT_WITHOUT_INIT(seq) std::remove_const<std::remove_reference<decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq);
 
-// Define a initialization handler and a function that registers it.
-// It is distinguished whether a class was specified (implementation file) or not (header) and
-// whether there actually are definitions.
+// Define an initialization handler and a function that registers it.
+// It is distinguished whether a class was specified (implementation file) or not (header),
+// whether there actually are definitions, and whether they are read from a file.
 #define _CABSL_INIT_DEFS___(name, class) \
   static void _##name##Init(); \
   static void _##name##InitReg();
@@ -724,16 +715,16 @@ namespace cabsl
 // - Definitions defined or not
 // - Variables defined or not
 
-// Inline, no args, no defs, no vars
+// Inline, no `args`, no `defs`, no `vars`
 #define _CABSL_FUNS____(name, class, ...) \
   _CABSL_NOARGS_HEAD(name)
 
-// Not inline, no args, no defs, no vars
+// Not inline, no `args`, no `defs`, no `vars`
 // Option is called directly. Default argument was declared in header.
 #define _CABSL_FUNS_1___(name, class, ...) \
   void class::name(const OptionExecution& _o)
 
-// Inline, args, no defs, no vars
+// Inline, `args`, no `defs`, no `vars`
 // Helper needed to stream and translate arguments.
 #define _CABSL_FUNS__1__(name, class, ...) \
   _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
@@ -741,14 +732,14 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, args, no defs, no vars
+// Not inline, `args`, no `defs`, no `vars`
 // Helper was declared in header that calls actual option.
 // There should be no defaults for arguments. Generate them if they are, so the compiler will complain.
 #define _CABSL_FUNS_1_1__(name, class, ...) \
   void class::_##name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Inline, no args, defs, no vars
-// Helper needed to handle defs.
+// Inline, no `args`, `defs`, no `vars`
+// Helper needed to handle `defs`.
 #define _CABSL_FUNS___1_(name, class, ...) \
   _CABSL_NOARGS_HEAD(name) \
   { \
@@ -757,8 +748,8 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, no args, defs, no vars
-// Helper needed to handle defs. Wrapper class needed to define another method.
+// Not inline, no `args`, `defs`, no `vars`
+// Helper needed to handle `defs`. Wrapper class needed to define another method.
 #define _CABSL_FUNS_1__1_(name, class, ...) \
   namespace _ns##class \
   { \
@@ -774,8 +765,8 @@ namespace cabsl
   } \
   void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Inline, args, defs, no vars
-// Helper needed to stream and translate arguments and handle defs.
+// Inline, `args`, `defs`, no `vars`
+// Helper needed to stream and translate arguments and handle `defs`.
 #define _CABSL_FUNS__1_1_(name, class, ...) \
   _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
     _CABSL_DEFS_IMPL(name) \
@@ -783,8 +774,8 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, args, defs, no vars
-// Header already handled args. Second helper needed to handle defs.
+// Not inline, `args`, `defs`, no `vars`
+// Header already handled `args`. Second helper needed to handle `defs`.
 // Wrapper class needed to define a third method.
 #define _CABSL_FUNS_1_1_1_(name, class, ...) \
   namespace _ns##class \
@@ -801,8 +792,8 @@ namespace cabsl
   } \
   void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Inline, no args, no defs, vars
-// Helper needed to handle vars.
+// Inline, no `args`, no `defs`, `vars`
+// Helper needed to handle `vars`.
 #define _CABSL_FUNS____1(name, class, ...) \
   _CABSL_NOARGS_HEAD(name) \
   { \
@@ -811,7 +802,7 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, no args, no defs, vars
+// Not inline, no `args`, no `defs`, `vars`
 // Helper needed to handle vars. Wrapper class needed to define another method.
 #define _CABSL_FUNS_1___1(name, class, ...) \
   namespace _ns##class \
@@ -828,8 +819,8 @@ namespace cabsl
   } \
   void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Inline, args, no defs, vars
-// Helper needed to stream and translate arguments and handle vars.
+// Inline, `args`, no `defs`, `vars`
+// Helper needed to stream and translate arguments and handle `vars`.
 #define _CABSL_FUNS__1__1(name, class, ...) \
   _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
     _CABSL_VARS_IMPL(name, __VA_ARGS__) \
@@ -837,8 +828,8 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, args, no defs, vars
-// Header already handled args. Second helper needed to handle vars.
+// Not inline, `args`, no `defs`, `vars`
+// Header already handled `args`. Second helper needed to handle `vars`.
 // Wrapper class needed to define a third method.
 #define _CABSL_FUNS_1_1__1(name, class, ...) \
   namespace _ns##class \
@@ -855,8 +846,8 @@ namespace cabsl
   } \
   void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_ARG_WITH_INIT, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Inline, no args, defs, vars
-// Helper needed to handle defs and vars.
+// Inline, no `args`, `defs`, `vars`
+// Helper needed to handle `defs` and `vars`.
 #define _CABSL_FUNS___1_1(name, class, ...) \
   _CABSL_NOARGS_HEAD(name) \
   { \
@@ -866,8 +857,9 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, no args, defs, vars
-// Helper needed to handle defs and vars. Wrapper class needed to define another method.
+// Not inline, no `args`, `defs`, `vars`
+// Helper needed to handle `defs` and `vars`.
+// Wrapper class needed to define another method.
 #define _CABSL_FUNS_1__1_1(name, class, ...) \
   namespace _ns##class \
   { \
@@ -884,8 +876,8 @@ namespace cabsl
   } \
   void _ns##class::name##Wrapper::name(_CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Inline, args, defs, vars
-// Helper needed to stream and translate arguments and handle defs and vars.
+// Inline, `args`, `defs`, `vars`
+// Helper needed to stream and translate arguments and handle `defs` and `vars`.
 #define _CABSL_FUNS__1_1_1(name, class, ...) \
   _CABSL_ARGS_HEAD(name, __VA_ARGS__) \
     _CABSL_DEFS_IMPL(name) \
@@ -894,8 +886,8 @@ namespace cabsl
   } \
   void _##name(_CABSL_APPLY(_CABSL_DECL_ARG, _CABSL_GET_ARGS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_DEF, _CABSL_GET_DEFS(__VA_ARGS__)) _CABSL_APPLY(_CABSL_DECL_VAR, _CABSL_GET_VARS(__VA_ARGS__)) const OptionExecution& _o)
 
-// Not inline, args, defs, vars
-// Header already handled args. Second helper needed to handle defs and vars.
+// Not inline, `args`, `defs`, `vars`
+// Header already handled `args`. Second helper needed to handle `defs` and `vars`.
 // Wrapper class needed to define a third method.
 #define _CABSL_FUNS_1_1_1_1(name, class, ...) \
   namespace _ns##class \
@@ -996,7 +988,7 @@ namespace cabsl
 // Generate a variable name for the list of actual arguments of a method call.
 #define _CABSL_PASS_VAR(seq) _vars->_CABSL_VAR(seq),
 
-// Does a list contain an "args()" parameter? Empty or "1".
+// Does a list contain an `args()` parameter? Empty or `1`.
 #define _CABSL_HAS_ARGS(...) _CABSL_HAS_ARGS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_HAS_ARGS_I(n, ...) _CABSL_HAS_ARGS_II(n, (_CABSL_HAS_ARGS_III, __VA_ARGS__))
 #define _CABSL_HAS_ARGS_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1006,7 +998,7 @@ namespace cabsl
 #define _CABSL_HAS_ARGS_III_load(...)
 #define _CABSL_HAS_ARGS_III_vars(...)
 
-// Return the contents of the "args()" parameter in a list.
+// Return the contents of the `args()` parameter in a list.
 #define _CABSL_GET_ARGS(...) _CABSL_GET_ARGS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_GET_ARGS_I(n, ...) _CABSL_GET_ARGS_II(n, (_CABSL_GET_ARGS_III, __VA_ARGS__))
 #define _CABSL_GET_ARGS_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1016,7 +1008,7 @@ namespace cabsl
 #define _CABSL_GET_ARGS_III_load(...)
 #define _CABSL_GET_ARGS_III_vars(...)
 
-// Does a list contain a "defs()" or "load()" parameter? Empty or "1".
+// Does a list contain a `defs()` or `load()` parameter? Empty or `1`.
 #define _CABSL_HAS_DEFS(...) _CABSL_HAS_DEFS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_HAS_DEFS_I(n, ...) _CABSL_HAS_DEFS_II(n, (_CABSL_HAS_DEFS_III, __VA_ARGS__))
 #define _CABSL_HAS_DEFS_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1026,7 +1018,7 @@ namespace cabsl
 #define _CABSL_HAS_DEFS_III_load(...) 1
 #define _CABSL_HAS_DEFS_III_vars(...)
 
-// Does a list contain a "load()" parameter? Empty or "1".
+// Does a list contain a `load()` parameter? Empty or `1`.
 #define _CABSL_HAS_LOAD(...) _CABSL_HAS_LOAD_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_HAS_LOAD_I(n, ...) _CABSL_HAS_LOAD_II(n, (_CABSL_HAS_LOAD_III, __VA_ARGS__))
 #define _CABSL_HAS_LOAD_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1036,7 +1028,7 @@ namespace cabsl
 #define _CABSL_HAS_LOAD_III_load(...) 1
 #define _CABSL_HAS_LOAD_III_vars(...)
 
-// Return the contents of the "defs()" or "load()" parameter in a list.
+// Return the contents of the `defs()` or `load()` parameter in a list.
 #define _CABSL_GET_DEFS(...) _CABSL_GET_DEFS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_GET_DEFS_I(n, ...) _CABSL_GET_DEFS_II(n, (_CABSL_GET_DEFS_III, __VA_ARGS__))
 #define _CABSL_GET_DEFS_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1046,7 +1038,7 @@ namespace cabsl
 #define _CABSL_GET_DEFS_III_load(...) __VA_ARGS__
 #define _CABSL_GET_DEFS_III_vars(...)
 
-// Does a list contain a "vars()" parameter? Empty or "1".
+// Does a list contain a `vars()` parameter? Empty or `1`.
 #define _CABSL_HAS_VARS(...) _CABSL_HAS_VARS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_HAS_VARS_I(n, ...) _CABSL_HAS_VARS_II(n, (_CABSL_HAS_VARS_III, __VA_ARGS__))
 #define _CABSL_HAS_VARS_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1056,7 +1048,7 @@ namespace cabsl
 #define _CABSL_HAS_VARS_III_load(...)
 #define _CABSL_HAS_VARS_III_vars(...) 1
 
-// Return the contents of the "vars()" parameter in a list.
+// Return the contents of the `vars()` parameter in a list.
 #define _CABSL_GET_VARS(...) _CABSL_GET_VARS_I(_CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__, ignore)
 #define _CABSL_GET_VARS_I(n, ...) _CABSL_GET_VARS_II(n, (_CABSL_GET_VARS_III, __VA_ARGS__))
 #define _CABSL_GET_VARS_II(n, pair, ...) _CABSL_ATTR_##n pair
@@ -1098,8 +1090,8 @@ namespace cabsl
   if(_o.context.state == line && (_o.context.stateName = #name))
 
 /**
- * The macro marks a common_transition. It sets a flag so that a transition is accepted,
- * even if not executed through the keyword "transition".
+ * The macro marks a common transition. It sets a flag so that a transition is accepted,
+ * even if not executed through the keyword `transition`.
  */
 #define common_transition \
   _o.context.hasCommonTransition = true;
@@ -1136,7 +1128,7 @@ namespace cabsl
 
 /**
  * Executes the first applicable option from a list.
- * @param ... The list of options as a std::vector<OptionInfos::Option>.
+ * @param ... The list of options as a `std::vector<std::string>`.
  * @return Was an option executed?
  */
 #define select_option(...) OptionInfos::execute(this, __VA_ARGS__)
@@ -1200,7 +1192,7 @@ namespace cabsl
   19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
 
 /**
- * Determine whether a sequence is of the form "(a) b" or "(a)(b) c".
+ * Determine whether a sequence is of the form `(a) b` or `(a)(b) c`.
  * In the first case, 1 is returned, otherwise 2.
  */
 #define _CABSL_SEQ_SIZE(...) _CABSL_CAT(_CABSL_SEQ_SIZE, _CABSL_SEQ_SIZE_0 __VA_ARGS__))
@@ -1302,9 +1294,6 @@ namespace cabsl
 #define _CABSL_VAR_2_III(...)
 
 /** Generate the initialization code from the declaration if required. */
-#define _CABSL_INIT(seq) _CABSL_JOIN(_CABSL_INIT_I_, _CABSL_SEQ_SIZE(seq))(seq)
-#define _CABSL_INIT_I_1(...)
-#define _CABSL_INIT_I_2(...) = _CABSL_DECL_I __VA_ARGS__))(_CABSL_INIT_II __VA_ARGS__) _CABSL_INIT_I_2_I(__VA_ARGS__))
 #define _CABSL_INIT_I_2_I(...) _CABSL_INIT_I_2_II __VA_ARGS__)
 #define _CABSL_INIT_I_2_II(...) _CABSL_INIT_I_2_III
 #define _CABSL_INIT_I_2_III(...) __VA_ARGS__ _CABSL_DROP(
