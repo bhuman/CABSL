@@ -276,7 +276,7 @@ namespace cabsl
        * @tparam U The type of the argument.
        * @param value The current value of the argument.
        */
-      template<typename U> std::enable_if<isStreamable<U>::value>::type addArgument(const char* name, const U& value) const
+      template<typename U> typename std::enable_if<isStreamable<U>::value>::type addArgument(const char* name, const U& value) const
       {
         name += 1 + static_cast<int>(std::string(name).find_last_of(" )"));
         OutStringStream stream;
