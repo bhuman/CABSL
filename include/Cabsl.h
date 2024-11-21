@@ -627,7 +627,7 @@ namespace cabsl
 #define _CABSL_STRUCT_ARGS_1_1(name, ...)
 
 // Generate the declaration and optional initialization of a field in the structure.
-#define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_VAR(seq) _CABSL_INIT(seq);
+#define _CABSL_STRUCT_WITH_INIT(seq) std::remove_const<std::remove_reference<decltype(cabsl::TypeWrapper<_CABSL_DECL_I seq))>::type)>::type>::type _CABSL_CONST_REF(seq) _CABSL_VAR(seq) _CABSL_INIT(seq);
 
 // Define a structure for definitions. If `load` is used, the structure has a function `_read`.
 #define _CABSL_STRUCT_DEFS___(name, class, ...)
@@ -914,7 +914,7 @@ namespace cabsl
   template<typename U = _##name##Args> typename std::enable_if<std::is_default_constructible<U>::value>::type \
   name(const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance)) \
   { \
-    name(_##name##Args(), _o); \
+    name(U(), _o); \
   } \
   void name(const _##name##Args& _args, const OptionExecution& _o = OptionExecution(#name, static_cast<CabslBehavior*>(_theInstance)->_##name##Context, _theInstance)) \
   { \
@@ -949,6 +949,11 @@ namespace cabsl
 #define _CABSL_INIT(seq) _CABSL_JOIN(_CABSL_INIT_I_, _CABSL_SEQ_SIZE(seq))(seq)
 #define _CABSL_INIT_I_1(...)
 #define _CABSL_INIT_I_2(...) = _CABSL_INIT_I_2_I(__VA_ARGS__)
+
+// Generate a const reference of the declaration contains no initialization.
+#define _CABSL_CONST_REF(seq) _CABSL_JOIN(_CABSL_CONST_REF_I_, _CABSL_SEQ_SIZE(seq))(seq)
+#define _CABSL_CONST_REF_I_1(...) const&
+#define _CABSL_CONST_REF_I_2(...)
 
 // Generate code for streaming an argument and adding it to the arguments stored in the execution environment.
 #define _CABSL_STREAM_ARG(seq) \
