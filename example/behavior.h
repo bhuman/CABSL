@@ -50,9 +50,9 @@ protected:
 
   static int ball_x; /**< A shared estimate of the ball's x coordinate. */
   static int ball_y; /**< A shared estimate of the ball's y coordinate. */
-  double ball_distance; /**< The players distance to the estimated ball. */
+  double ball_distance; /**< The player's distance to the estimated ball. */
   Action ball_local_direction; /**< The direction to the ball if it is in the local area. Otherwise DO_NOTHING. */
-  int most_westerly_teammate_x; /**< The x coordinate of the most west player. */
+  int most_westerly_teammate_x; /**< The x coordinate of the westmost player. */
   enum class Role {defender, midfielder, striker} role; /**< The role of the player. */
   Action next_action; /**< The next action is set here. */
 
