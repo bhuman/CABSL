@@ -306,6 +306,11 @@ in the body of a class `Behavior`, the implementation could look like this:
       // ...
     }
 
+If options are defined separately, any declarations in the surrounding
+class (other options, symbols) that are accessed by these options cannot be
+declared as `private`, i.e. they have to be either `protected` or
+`public`.
+
 
 ## Example
 
