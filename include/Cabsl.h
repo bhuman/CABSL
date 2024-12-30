@@ -1120,10 +1120,10 @@ namespace cabsl
 #define action _o.addToActivationGraph();
 
 /** The time since the execution of this option started. */
-#define option_time int(_currentFrameTime - _o.context.optionStart)
+#define option_time static_cast<int>(_currentFrameTime - _o.context.optionStart)
 
 /** The time since the execution of the current state started. */
-#define state_time int(_currentFrameTime - _o.context.stateStart)
+#define state_time static_cast<int>(_currentFrameTime - _o.context.stateStart)
 
 /** Did a suboption called reached a target state? */
 #define action_done (_o.context.subOptionStateType == OptionContext::targetState)
