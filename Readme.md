@@ -393,7 +393,8 @@ the main pdf-file followed by a list of all cpp-files that contain options
 instead. The former variant is used if all options are defined inline. The
 latter one is used if options are implemented in separate cpp-files. In
 addition, the path to *dot* can be specified if it is not in the search
-path. By default, the script creates SVG files. This can be changed to PDF using a switch. There is also an option to manually add data to the graphs,
+path. By default, the script creates SVG files. This can be changed to PDF
+using a switch. There is also an option to manually add data to the graphs,
 which is not explained here.
 
     usage: bin/createGraphs { options } ( <header file> | -m <name> <cpp files> )
@@ -501,7 +502,9 @@ to CABSL as the third template parameter of the class `cabsl::Cabsl<>`.
 
 By default, the class *InFileStream.h* is used to read values from
 configuration files. Its constructor simply adds the extension *.cfg* to the
-file name passed and opens the file with that name. It implements a method `read` that reads a single name/value pair per line. For reading the actual values, the operator `>>` of the class `std::istream` is used. Therefore,
+file name passed and opens the file with that name. It implements a method
+`read` that reads a single name/value pair per line. For reading the actual
+values, the operator `>>` of the class `std::istream` is used. Therefore,
 if `load` is used and constant definitions are not of primitive data types,
 the streaming operator must be overloaded for those types:
 
