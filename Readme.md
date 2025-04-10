@@ -500,7 +500,7 @@ to CABSL as the third template parameter of the class `cabsl::Cabsl<>`.
 ### Reading Configuration Files
 
 By default, the class *InFileStream.h* is used to read values from
-configuration files. Its constructor simply add the extension *.cfg* to the
+configuration files. Its constructor simply adds the extension *.cfg* to the
 file name passed and opens the file with that name. It implements a method `read` that reads a single name/value pair per line. For reading the actual values, the operator `>>` of the class `std::istream` is used. Therefore,
 if `load` is used and constant definitions are not of primitive data types,
 the streaming operator must be overloaded for those types:
