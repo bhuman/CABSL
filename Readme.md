@@ -471,8 +471,8 @@ entered to support the symbols `option_time` and `state_time`.
 Arguments, constant definitions, and state variables are all passed as
 parameters to the member function that contains the code of the option. The
 latter two are always passed as references (`const` for constant
-definitions). They are are stored in memory as structures owned by the
-option's context.
+definitions). They are stored in memory as structures owned by the option's
+context.
 
 
 ### Streaming Values
