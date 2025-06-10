@@ -192,12 +192,14 @@ options. It is tried to execute each option in the list in the sequence
 they are given. If an option determines that it cannot currently be
 executed, it stays in its `initial_state`. Otherwise, it is run normally.
 `select_option` stops after the first option that was actually executed.
-Note that an option that stays in its `initial_state` when it was called by
-`select_option` is considered as not having been executed at all if it has
-no action block for that state. If it has, the block is still executed, but
-neither the `option_time` nor the `state_time` are increased. A call to
-`select_option` could, e.g., look like this, assuming the three options
-called behave as it was described above:
+`select_option` returns whether an option was actually executed or whether
+all options refused to activate. Note that an option that stays in its
+`initial_state` when it was called by `select_option` is considered as not
+having been executed at all if it has no action block for that state. If it
+has, the block is still executed, but neither the `option_time` nor the
+`state_time` are increased. A call to `select_option` could, e.g., look
+like this, assuming the three options called behave as it was described
+above:
 
     select_option({
       "play_striker",

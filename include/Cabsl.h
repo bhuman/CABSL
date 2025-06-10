@@ -938,7 +938,12 @@ namespace cabsl
   _CABSL_APPLY(_CABSL_STREAM_VAR, _CABSL_GET_VARS(__VA_ARGS__)) \
 
 // Assign a value to a variable.
-#define _CABSL_INIT_VAR(seq) _vars->_CABSL_VAR(seq) = _CABSL_INIT_I_2_I(seq);
+#define _CABSL_INIT_VAR(seq) \
+  (&_vars->_CABSL_VAR(seq))->~decltype(_vars->_CABSL_VAR(seq))(); \
+  new (&_vars->_CABSL_VAR(seq)) decltype(_vars->_CABSL_VAR(seq))(_CABSL_INIT_VAR_I(seq));
+#define _CABSL_INIT_VAR_I(seq) _CABSL_JOIN(_CABSL_INIT_VAR_I_, _CABSL_SEQ_SIZE(seq))(seq)
+#define _CABSL_INIT_VAR_I_1(seq)
+#define _CABSL_INIT_VAR_I_2(seq) _CABSL_INIT_I_2_I(seq)
 
 // Apply a macro to all values in a list.
 #define _CABSL_APPLY(macro, ...) _CABSL_APPLY_I(macro, _CABSL_TUPLE_SIZE(__VA_ARGS__, ignore), __VA_ARGS__)
